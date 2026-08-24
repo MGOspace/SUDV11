@@ -51,23 +51,31 @@
     })();
   </script>
 
-  <!-- Lecture du live Mixcloud (M_GO) : play = lance le live, badge LIVE + point rouge -->
+  <!-- Live Mixcloud (M_GO) : la box reflète l'état réel du stream ; play si online -->
   <script>
     (function () {
       var USER = "M_GO";
+
+      // URL du Cloudflare Worker (voir worker/mixcloud-live.js). Tant qu'elle
+      // est vide, la détection auto est désactivée : le play reste possible et
+      // la box suit l'état de lecture (repli, pour ne rien casser).
+      var STATUS_ENDPOINT = "";
+
       var statusBox = document.getElementById("statusBox");
       var playBtn = document.getElementById("playBtn");
       var mount = document.getElementById("playerMount");
+      var isOnline = false;   // stream Mixcloud réellement en ligne
       var playing = false;
 
-      function setBadge(live) {
-        statusBox.classList.toggle("is-live", live);
-        statusBox.innerHTML = live
+      function setBadge(online) {
+        statusBox.classList.toggle("is-live", online);
+        statusBox.innerHTML = online
           ? '<span class="live-dot"></span>LIVE'
           : "OFFLINE";
       }
 
       function play() {
+        if (STATUS_ENDPOINT && !isOnline) return; // pas de play si offline
         mount.innerHTML =
           '<iframe width="300" height="60" allow="autoplay" ' +
           'src="https://player-widget.mixcloud.com/widget/iframe/?hide_cover=1&mini=1&autoplay=1&feed=%2Flive%2F' +
@@ -75,7 +83,6 @@
         playing = true;
         playBtn.classList.add("is-playing");
         playBtn.setAttribute("aria-label", "Arrêter le live");
-        setBadge(true);
       }
 
       function stop() {
@@ -83,14 +90,41 @@
         playing = false;
         playBtn.classList.remove("is-playing");
         playBtn.setAttribute("aria-label", "Lancer le live");
-        setBadge(false);
       }
 
       playBtn.addEventListener("click", function () {
         if (playing) { stop(); } else { play(); }
       });
 
-      setBadge(false); // état initial
+      function setOnline(online) {
+        isOnline = online;
+        setBadge(online);
+        playBtn.disabled = !online;         // play grisé si offline
+        if (!online && playing) { stop(); } // coupe si le live s'arrête
+      }
+
+      // --- Repli sans Worker : play toujours possible, box = état de lecture ---
+      if (!STATUS_ENDPOINT) {
+        setBadge(false);
+        playBtn.disabled = false;
+        var _play = play, _stop = stop;
+        play = function () { _play(); setBadge(true); };
+        stop = function () { _stop(); setBadge(false); };
+        return;
+      }
+
+      // --- Détection auto via le Worker ---
+      setOnline(false); // état initial (offline tant qu'on n'a pas confirmé)
+
+      function checkLive() {
+        fetch(STATUS_ENDPOINT, { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { setOnline(!!(d && d.live)); })
+          .catch(function () { /* on garde le dernier état connu */ });
+      }
+
+      checkLive();
+      setInterval(checkLive, 30000); // re-vérifie toutes les 30 s
     })();
   </script>
 
