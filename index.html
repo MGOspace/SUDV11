@@ -83,20 +83,14 @@
         if (playing) { stop(); } else { play(); }
       });
 
-      function renderStatus(text) {
-        var span = '<span>' + text + '</span>';
-        // piste dupliquée : l'animation défile de -50% en boucle sans coupure
-        statusBox.innerHTML = '<div class="status-track">' + span.repeat(8) + '</div>';
-      }
-
       function setStatus(live) {
         isLive = live;
-        renderStatus(live ? "LIVE" : "OFFLINE");
+        statusBox.textContent = live ? "LIVE" : "OFFLINE";
         playBtn.disabled = !live;
         if (!live && playing) { stop(); }
       }
 
-      renderStatus("OFFLINE"); // état initial avant la 1re vérif
+      statusBox.textContent = "OFFLINE"; // état initial avant la 1re vérif
 
       function checkLive() {
         // /live/ renvoie 200 si en direct, 404 sinon
