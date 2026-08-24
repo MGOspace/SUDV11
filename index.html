@@ -8,9 +8,71 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- Header : ligne du bas noire, play + statut en haut à droite -->
+  <header class="header">
+    <button class="play-btn" id="playBtn" type="button" aria-label="Lancer le live" disabled>
+      <span class="play-icon"></span>
+    </button>
+    <div class="status-box" id="statusBox">OFFLINE</div>
+  </header>
+
   <main class="stage">
     <h1 class="title">SUDV11</h1>
   </main>
+
+  <!-- Player live monté ici (hors-écran) -->
+  <div class="player-mount" id="playerMount"></div>
+
+  <!-- Détection + lancement du live Mixcloud (M_GO) -->
+  <script>
+    (function () {
+      var USER = "M_GO";
+      var statusBox = document.getElementById("statusBox");
+      var playBtn = document.getElementById("playBtn");
+      var mount = document.getElementById("playerMount");
+      var isLive = false;
+      var playing = false;
+
+      function play() {
+        if (!isLive) return;
+        mount.innerHTML =
+          '<iframe width="300" height="60" allow="autoplay" ' +
+          'src="https://player-widget.mixcloud.com/widget/iframe/?hide_cover=1&mini=1&autoplay=1&feed=%2Flive%2F' +
+          USER + '%2F"></iframe>';
+        playing = true;
+        playBtn.classList.add("is-playing");
+        playBtn.setAttribute("aria-label", "Arrêter le live");
+      }
+
+      function stop() {
+        mount.innerHTML = "";
+        playing = false;
+        playBtn.classList.remove("is-playing");
+        playBtn.setAttribute("aria-label", "Lancer le live");
+      }
+
+      playBtn.addEventListener("click", function () {
+        if (playing) { stop(); } else { play(); }
+      });
+
+      function setStatus(live) {
+        isLive = live;
+        statusBox.textContent = live ? "LIVE" : "OFFLINE";
+        playBtn.disabled = !live;
+        if (!live && playing) { stop(); }
+      }
+
+      function checkLive() {
+        // /live/ renvoie 200 si en direct, 404 sinon
+        fetch("https://api.mixcloud.com/" + USER + "/live/")
+          .then(function (r) { setStatus(r.ok); })
+          .catch(function () { setStatus(false); });
+      }
+
+      checkLive();
+      setInterval(checkLive, 60000); // re-vérifie chaque minute
+    })();
+  </script>
 
   <!-- Chat Chatango — mode collapsible (fixe bas droite, tab ↔ box) -->
   <script id="cid0020000448570309971" data-cfasync="false" async src="//st.chatango.com/js/gz/emb.js" style="width: 250px;height: 350px;">{"handle":"sudv11","arch":"js","styles":{"a":"000000","b":100,"c":"FFFFFF","d":"FFFFFF","k":"000000","l":"000000","m":"000000","n":"FFFFFF","p":"10","q":"000000","r":100,"pos":"br","cv":1,"cvbg":"000000","cvw":75,"cvh":30}}</script>
