@@ -1,0 +1,49 @@
+/* ===== Police Schengen C ===== */
+@font-face {
+  font-family: "ABC Schengen C";
+  src: url("../fonts/ABCSchengenC-Bold-Trial.woff") format("woff"),
+       url("../fonts/ABCSchengenC-Bold-Trial.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ===== Réinitialisation légère ===== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+
+/* ===== Variables ===== */
+:root {
+  /* Blanc légèrement moins clair (blanc cassé chaud) */
+  --color-bg: #f4f3ef;
+  --color-stroke: #000000;
+}
+
+/* ===== Base ===== */
+body {
+  background: var(--color-bg);
+  font-family: "ABC Schengen C", system-ui, sans-serif;
+}
+
+/* ===== Scène centrée ===== */
+.stage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 4vw;
+}
+
+/* ===== Titre SUDV11 : contour noir, sans remplissage ===== */
+.title {
+  margin: 0;
+  font-weight: 700;
+  font-size: clamp(2.5rem, 13vw, 13rem);
+  line-height: 1;
+  letter-spacing: 0.02em;
+
+  /* Pas de remplissage, contour noir */
+  color: transparent;
+  -webkit-text-stroke: 2px var(--color-stroke);
+  text-stroke: 2px var(--color-stroke);
+}
