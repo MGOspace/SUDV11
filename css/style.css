@@ -25,14 +25,51 @@ body {
   font-family: "ABC Schengen C", system-ui, sans-serif;
 }
 
-/* ===== Scène centrée ===== */
+/* ===== Scène (page unique, sans scroll) ===== */
 .stage {
   position: relative;
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;          /* chaque enfant gère son alignement */
   justify-content: center;
+  gap: clamp(0.25rem, 1.2vw, 0.75rem);
   padding-inline: 4vw;
+  overflow: hidden;
+}
+
+/* PLANNING : Schengen gras, REMPLI noir, ancré à gauche, cliquable */
+.planning-link {
+  align-self: flex-start;        /* part de la gauche */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+
+  font-family: "ABC Schengen C", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.25rem, 5vw, 4.5rem);   /* plus petit que SUDV11 */
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-align: left;
+  color: var(--color-stroke);    /* plein noir */
+}
+.planning-link:hover { opacity: 0.7; }
+
+/* Image du planning, insérée entre PLANNING et SUDV11, ancrée à gauche */
+.planning-figure {
+  align-self: flex-start;
+  margin: 0;
+}
+.planning-figure[hidden] { display: none; }
+.planning-figure img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(92vw, 900px);
+  max-height: 42vh;              /* reste dans l'écran, pas de scroll */
+  border: 2px solid var(--color-stroke);
 }
 
 /* ===== Header : seulement la ligne du bas noire ===== */
@@ -90,12 +127,13 @@ body {
   box-shadow: 6px 0 0 var(--color-stroke);
 }
 
-/* Petite box de statut (OFFLINE / LIVE), même design */
+/* Petite box de statut (OFFLINE / LIVE) : marquee défilant, même design */
 .status-box {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   height: 32px;
-  padding: 0 12px;
+  width: 96px;              /* largeur fixe pour le défilement */
+  overflow: hidden;         /* masque ce qui dépasse */
 
   border: 2px solid var(--color-stroke);
   border-radius: 0;
@@ -108,6 +146,21 @@ body {
   color: var(--color-stroke);
 }
 
+.status-track {
+  display: flex;
+  white-space: nowrap;
+  animation: status-marquee 14s linear infinite;  /* défile doucement */
+  will-change: transform;
+}
+.status-track span {
+  padding-right: 2.5em;     /* écart régulier entre les répétitions */
+}
+
+@keyframes status-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
 /* Player live monté hors-écran (audio seul) */
 .player-mount {
   position: fixed;
@@ -115,8 +168,10 @@ body {
   top: 0;
 }
 
-/* ===== Titre SUDV11 : contour noir, sans remplissage ===== */
+/* ===== Titre SUDV11 : contour noir, sans remplissage, centré ===== */
 .title {
+  align-self: center;            /* centré */
+  text-align: center;
   margin: 0;
   font-weight: 700;
   font-size: clamp(3rem, 16vw, 15rem);
