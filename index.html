@@ -10,7 +10,7 @@
 <body>
   <!-- Header : ligne du bas noire, play + statut en haut à droite -->
   <header class="header">
-    <button class="play-btn" id="playBtn" type="button" aria-label="Lancer le live" disabled>
+    <button class="play-btn" id="playBtn" type="button" aria-label="Lancer le live">
       <span class="play-icon"></span>
     </button>
     <div class="status-box" id="statusBox"></div>
@@ -51,18 +51,23 @@
     })();
   </script>
 
-  <!-- Détection + lancement du live Mixcloud (M_GO) -->
+  <!-- Lecture du live Mixcloud (M_GO) : play = lance le live, badge LIVE + point rouge -->
   <script>
     (function () {
       var USER = "M_GO";
       var statusBox = document.getElementById("statusBox");
       var playBtn = document.getElementById("playBtn");
       var mount = document.getElementById("playerMount");
-      var isLive = false;
       var playing = false;
 
+      function setBadge(live) {
+        statusBox.classList.toggle("is-live", live);
+        statusBox.innerHTML = live
+          ? '<span class="live-dot"></span>LIVE'
+          : "OFFLINE";
+      }
+
       function play() {
-        if (!isLive) return;
         mount.innerHTML =
           '<iframe width="300" height="60" allow="autoplay" ' +
           'src="https://player-widget.mixcloud.com/widget/iframe/?hide_cover=1&mini=1&autoplay=1&feed=%2Flive%2F' +
@@ -70,6 +75,7 @@
         playing = true;
         playBtn.classList.add("is-playing");
         playBtn.setAttribute("aria-label", "Arrêter le live");
+        setBadge(true);
       }
 
       function stop() {
@@ -77,30 +83,14 @@
         playing = false;
         playBtn.classList.remove("is-playing");
         playBtn.setAttribute("aria-label", "Lancer le live");
+        setBadge(false);
       }
 
       playBtn.addEventListener("click", function () {
         if (playing) { stop(); } else { play(); }
       });
 
-      function setStatus(live) {
-        isLive = live;
-        statusBox.textContent = live ? "LIVE" : "OFFLINE";
-        playBtn.disabled = !live;
-        if (!live && playing) { stop(); }
-      }
-
-      statusBox.textContent = "OFFLINE"; // état initial avant la 1re vérif
-
-      function checkLive() {
-        // /live/ renvoie 200 si en direct, 404 sinon
-        fetch("https://api.mixcloud.com/" + USER + "/live/")
-          .then(function (r) { setStatus(r.ok); })
-          .catch(function () { setStatus(false); });
-      }
-
-      checkLive();
-      setInterval(checkLive, 60000); // re-vérifie chaque minute
+      setBadge(false); // état initial
     })();
   </script>
 

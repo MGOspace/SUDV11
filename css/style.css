@@ -160,6 +160,23 @@ body {
   color: var(--color-stroke);
 }
 
+/* Point rouge « lumière live » à gauche de LIVE */
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #e01e1e;
+  box-shadow: 0 0 0 0 rgba(224, 30, 30, 0.6);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(224, 30, 30, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(224, 30, 30, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(224, 30, 30, 0); }
+}
+
 /* ===== Second marquee (ticker Are.na) sous le header ===== */
 .ticker {
   position: fixed;
