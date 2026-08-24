@@ -51,42 +51,77 @@
     })();
   </script>
 
-  <!-- Live Mixcloud (M_GO) : la box reflète l'état réel du stream ; play si online -->
+  <!-- Live Mixcloud (M_GO) : box = état réel du stream, play = son HLS dans le navigateur -->
   <script>
     (function () {
-      var USER = "M_GO";
-
-      // URL du Cloudflare Worker (voir worker/mixcloud-live.js). Tant qu'elle
-      // est vide, la détection auto est désactivée : le play reste possible et
-      // la box suit l'état de lecture (repli, pour ne rien casser).
+      // Cloudflare Worker (voir worker/mixcloud-live.js) : renvoie { live, src }
+      // où src est le flux audio HLS proxifié (CORS ok), prêt à jouer.
       var STATUS_ENDPOINT = "https://sudv11-live.guerreiromathis.workers.dev/";
+      var HLSJS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js";
 
       var statusBox = document.getElementById("statusBox");
       var playBtn = document.getElementById("playBtn");
       var mount = document.getElementById("playerMount");
+
       var isOnline = false;   // stream Mixcloud réellement en ligne
+      var currentSrc = null;  // URL du flux HLS à jouer (via le Worker)
       var playing = false;
+      var audio = null;
+      var hls = null;
+      var hlsLoading = null;
+      function noop() {}
+
+      function nativeHls() {
+        var a = document.createElement("audio");
+        return !!a.canPlayType && !!a.canPlayType("application/vnd.apple.mpegurl");
+      }
+
+      function loadHlsJs(cb) {
+        if (window.Hls) { cb(); return; }
+        if (hlsLoading) { hlsLoading.push(cb); return; }
+        hlsLoading = [cb];
+        var s = document.createElement("script");
+        s.src = HLSJS_URL;
+        s.onload = function () { var q = hlsLoading; hlsLoading = null; q.forEach(function (f) { f(); }); };
+        s.onerror = function () { hlsLoading = null; };
+        document.head.appendChild(s);
+      }
 
       function setBadge(online) {
         statusBox.classList.toggle("is-live", online);
-        statusBox.innerHTML = online
-          ? '<span class="live-dot"></span>LIVE'
-          : "OFFLINE";
+        statusBox.innerHTML = online ? '<span class="live-dot"></span>LIVE' : "OFFLINE";
       }
 
       function play() {
-        if (STATUS_ENDPOINT && !isOnline) return; // pas de play si offline
-        mount.innerHTML =
-          '<iframe width="300" height="60" allow="autoplay" ' +
-          'src="https://player-widget.mixcloud.com/widget/iframe/?hide_cover=1&mini=1&autoplay=1&feed=%2Flive%2F' +
-          USER + '%2F"></iframe>';
+        if (!isOnline || !currentSrc) return;
+        audio = document.createElement("audio");
+        audio.autoplay = true;
+        audio.preload = "auto";
+        mount.appendChild(audio);
+
         playing = true;
         playBtn.classList.add("is-playing");
         playBtn.setAttribute("aria-label", "Arrêter le live");
+
+        if (nativeHls()) {
+          audio.src = currentSrc;          // Safari / iOS : HLS natif
+          audio.play().catch(noop);
+        } else {
+          loadHlsJs(function () {           // Chrome / Firefox / Android : hls.js
+            if (!window.Hls || !playing || !audio) return;
+            hls = new window.Hls({ liveDurationInfinity: true });
+            hls.loadSource(currentSrc);
+            hls.attachMedia(audio);
+            hls.on(window.Hls.Events.MANIFEST_PARSED, function () { audio.play().catch(noop); });
+          });
+        }
       }
 
       function stop() {
+        if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+        if (audio) { try { audio.pause(); } catch (e) {} }
         mount.innerHTML = "";
+        audio = null;
         playing = false;
         playBtn.classList.remove("is-playing");
         playBtn.setAttribute("aria-label", "Lancer le live");
@@ -96,30 +131,22 @@
         if (playing) { stop(); } else { play(); }
       });
 
-      function setOnline(online) {
+      function setOnline(online, src) {
         isOnline = online;
+        currentSrc = src || null;
         setBadge(online);
         playBtn.disabled = !online;         // play grisé si offline
         if (!online && playing) { stop(); } // coupe si le live s'arrête
+        // Précharge hls.js dès qu'on est online (si nécessaire) pour un play instantané
+        if (online && !nativeHls()) { loadHlsJs(noop); }
       }
 
-      // --- Repli sans Worker : play toujours possible, box = état de lecture ---
-      if (!STATUS_ENDPOINT) {
-        setBadge(false);
-        playBtn.disabled = false;
-        var _play = play, _stop = stop;
-        play = function () { _play(); setBadge(true); };
-        stop = function () { _stop(); setBadge(false); };
-        return;
-      }
-
-      // --- Détection auto via le Worker ---
-      setOnline(false); // état initial (offline tant qu'on n'a pas confirmé)
+      setOnline(false); // état initial
 
       function checkLive() {
         fetch(STATUS_ENDPOINT, { cache: "no-store" })
           .then(function (r) { return r.json(); })
-          .then(function (d) { setOnline(!!(d && d.live)); })
+          .then(function (d) { setOnline(!!(d && d.live), d && d.src); })
           .catch(function () { /* on garde le dernier état connu */ });
       }
 
