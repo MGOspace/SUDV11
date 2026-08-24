@@ -7,6 +7,21 @@
   font-style: normal;
   font-display: swap;
 }
+@font-face {
+  font-family: "ABC Schengen C";
+  src: url("../fonts/ABCSchengenC-Light-Trial.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "ABC Schengen C";
+  src: url("../fonts/ABCSchengenC-LightItalic-Trial.woff") format("woff"),
+       url("../fonts/ABCSchengenC-LightItalic-Trial.otf") format("opentype");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
 
 /* ===== Réinitialisation légère ===== */
 *, *::before, *::after { box-sizing: border-box; }
@@ -85,7 +100,7 @@ body {
   justify-content: flex-end;   /* contenu en haut à droite */
   gap: 12px;
 
-  height: 52px;
+  height: 64px;
   padding: 0 16px;
 
   background: transparent;
@@ -94,8 +109,8 @@ body {
 
 /* Bouton play sobre (contour noir, même design) */
 .play-btn {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 2px solid var(--color-stroke);
   border-radius: 0;
@@ -127,12 +142,12 @@ body {
   box-shadow: 6px 0 0 var(--color-stroke);
 }
 
-/* Petite box de statut (OFFLINE / LIVE) : marquee défilant, même design */
+/* Box de statut (OFFLINE / LIVE) : marquee défilant, agrandie */
 .status-box {
   display: flex;
   align-items: center;
-  height: 32px;
-  width: 96px;              /* largeur fixe pour le défilement */
+  height: 44px;
+  width: 180px;             /* largeur fixe pour le défilement */
   overflow: hidden;         /* masque ce qui dépasse */
 
   border: 2px solid var(--color-stroke);
@@ -140,8 +155,8 @@ body {
 
   font-family: "ABC Schengen C", system-ui, sans-serif;
   font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.14em;
+  font-size: 1.15rem;
+  letter-spacing: 0.16em;
   line-height: 1;
   color: var(--color-stroke);
 }
@@ -157,6 +172,44 @@ body {
 }
 
 @keyframes status-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ===== Second marquee (ticker Are.na) sous le header ===== */
+.ticker {
+  position: fixed;
+  top: 64px;                /* juste sous le header (hauteur du header) */
+  left: 0;
+  right: 0;
+  z-index: 9;
+
+  height: 36px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+
+  background: var(--color-bg);
+  border-bottom: 2px solid var(--color-stroke);
+}
+.ticker-track {
+  display: flex;
+  white-space: nowrap;
+  animation: ticker-marquee 60s linear infinite;   /* durée recalculée en JS */
+  will-change: transform;
+
+  /* Schengen C Light Italic */
+  font-family: "ABC Schengen C", system-ui, sans-serif;
+  font-weight: 300;
+  font-style: italic;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: var(--color-stroke);
+}
+.ticker-track span {
+  padding-right: 3em;       /* écart entre les blocs */
+}
+@keyframes ticker-marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
 }

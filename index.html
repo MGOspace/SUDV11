@@ -16,6 +16,11 @@
     <div class="status-box" id="statusBox"></div>
   </header>
 
+  <!-- Second marquee : texte défilant depuis une channel Are.na -->
+  <div class="ticker" id="ticker" aria-hidden="true">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+
   <main class="stage">
     <button class="planning-link" id="planningLink" type="button">PLANNING</button>
     <figure class="planning-figure" id="planningFigure" hidden>
@@ -102,6 +107,45 @@
 
       checkLive();
       setInterval(checkLive, 60000); // re-vérifie chaque minute
+    })();
+  </script>
+
+  <!-- Marquee Are.na : récupère les blocs texte d'une channel et les fait défiler -->
+  <script>
+    (function () {
+      // Slug de la channel Are.na (are.na/m-go-lq0qmuopbtu/texte_sudv11)
+      var CHANNEL = "texte_sudv11";
+      var SPEED = 40; // px/seconde — plus petit = plus lent
+
+      var track = document.getElementById("tickerTrack");
+
+      function esc(s) {
+        return s.replace(/[&<>"]/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+        });
+      }
+
+      function build(items) {
+        if (!items.length) items = ["SUDV11"];
+        var unit = items.map(function (t) { return "<span>" + esc(t) + "</span>"; }).join("");
+        track.innerHTML = unit + unit; // deux copies -> boucle sans coupure (-50%)
+        // vitesse constante quel que soit le volume de texte
+        var half = track.scrollWidth / 2;
+        track.style.animationDuration = (half / SPEED) + "s";
+      }
+
+      if (!CHANNEL) { build([]); return; }
+
+      fetch("https://api.are.na/v2/channels/" + CHANNEL + "/contents?per=100")
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var texts = (d.contents || [])
+            .filter(function (b) { return b.class === "Text"; })
+            .map(function (b) { return (b.content || "").replace(/\s+/g, " ").trim(); })
+            .filter(Boolean);
+          build(texts);
+        })
+        .catch(function () { build([]); });
     })();
   </script>
 
