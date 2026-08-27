@@ -240,3 +240,206 @@ body {
   /* Opacité réduite (1 = plein, 0 = invisible) */
   opacity: 0.5;
 }
+
+/* ===== Rail images Are.na (bandeau droit, repliable — type NTS) ===== */
+:root {
+  --header-h: 64px;
+  --ticker-h: 38px;          /* 36px + bordure basse */
+  --rail-collapsed: 88px;
+  --rail-expanded: min(40vw, 440px);
+}
+
+/* La scène ne passe jamais sous le rail replié */
+.stage { padding-right: calc(4vw + var(--rail-collapsed)); }
+
+.rail {
+  position: fixed;
+  top: calc(var(--header-h) + var(--ticker-h));
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+
+  width: var(--rail-collapsed);
+  background: var(--color-bg);
+  border-left: 2px solid var(--color-stroke);
+  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rail[data-open="true"] { width: var(--rail-expanded); }
+
+/* Bouton + / × collé au bord gauche du rail (comme le + de NTS) */
+.rail-toggle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(-100%);
+
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--color-stroke);
+  border-right: 0;
+  background: var(--color-bg);
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.rail-toggle:hover { background: var(--color-stroke); }
+.rail-toggle:hover .rail-toggle-icon::before,
+.rail-toggle:hover .rail-toggle-icon::after { background: var(--color-bg); }
+
+.rail-toggle-icon {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rail-toggle-icon::before,
+.rail-toggle-icon::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 14px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--color-stroke);
+}
+.rail-toggle-icon::after { transform: rotate(90deg); }
+.rail[data-open="true"] .rail-toggle-icon { transform: rotate(45deg); }
+
+.rail-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  height: 36px;
+  padding: 0 10px;
+  border-bottom: 2px solid var(--color-stroke);
+
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--color-stroke);
+  white-space: nowrap;
+}
+.rail-count { font-weight: 300; font-style: italic; letter-spacing: 0.04em; }
+.rail:not([data-open="true"]) .rail-count { display: none; }
+
+.rail-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 8px;
+  padding-bottom: 56px;          /* dégage l'onglet du chat en bas à droite */
+}
+.rail[data-open="true"] .rail-grid { grid-template-columns: repeat(2, 1fr); }
+
+.rail-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 2px solid var(--color-stroke);
+  background: none;
+  cursor: zoom-in;
+}
+.rail-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rail-thumb:hover { opacity: 0.7; }
+
+.rail-empty {
+  margin: 4px 2px;
+  font-weight: 300;
+  font-style: italic;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-stroke);
+  opacity: 0.6;
+}
+
+/* ===== Lightbox ===== */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 5vw;
+
+  background: rgba(244, 243, 239, 0.94);
+  cursor: zoom-out;
+}
+.lightbox[hidden] { display: none; }
+.lightbox figure {
+  margin: 0;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.lightbox img {
+  display: block;
+  max-width: 100%;
+  max-height: 80vh;
+  border: 2px solid var(--color-stroke);
+  background: var(--color-bg);
+}
+.lightbox figcaption {
+  font-weight: 300;
+  font-style: italic;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: var(--color-stroke);
+}
+.lightbox-nav {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+}
+.lightbox-nav button {
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--color-stroke);
+  background: var(--color-bg);
+  cursor: pointer;
+
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1;
+  color: var(--color-stroke);
+}
+.lightbox-nav button:hover { background: var(--color-stroke); color: var(--color-bg); }
+
+@media (max-width: 700px) {
+  :root {
+    --rail-collapsed: 64px;
+    --rail-expanded: min(86vw, 380px);
+  }
+  .rail-head { font-size: 0.6rem; letter-spacing: 0.08em; }
+}
