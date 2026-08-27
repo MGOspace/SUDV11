@@ -8,13 +8,22 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- Header : ligne du bas noire, play + statut en haut à droite -->
+  <!-- Header : PLANNING à gauche, play + statut à droite -->
   <header class="header">
-    <button class="play-btn" id="playBtn" type="button" aria-label="Lancer le live">
-      <span class="play-icon"></span>
-    </button>
-    <div class="status-box" id="statusBox"></div>
+    <button class="planning-link" id="planningLink" type="button"
+            aria-expanded="false" aria-controls="planningFigure">PLANNING</button>
+    <div class="header-right">
+      <button class="play-btn" id="playBtn" type="button" aria-label="Lancer le live">
+        <span class="play-icon"></span>
+      </button>
+      <div class="status-box" id="statusBox"></div>
+    </div>
   </header>
+
+  <!-- Planning : panneau ouvert par le bouton du header -->
+  <figure class="planning-figure" id="planningFigure" hidden>
+    <img src="assets/planningia.png" alt="Planning de la semaine" loading="lazy">
+  </figure>
 
   <!-- Second marquee : texte défilant depuis une channel Are.na -->
   <div class="ticker" id="ticker" aria-hidden="true">
@@ -22,11 +31,9 @@
   </div>
 
   <main class="stage">
-    <button class="planning-link" id="planningLink" type="button">PLANNING</button>
-    <figure class="planning-figure" id="planningFigure" hidden>
-      <img src="assets/planningia.png" alt="Planning de la semaine" loading="lazy">
-    </figure>
     <h1 class="title">SUDV11</h1>
+    <!-- Photos Are.na : tailles variables, dérive lente, clic = vue en grand -->
+    <div class="field" id="field"></div>
   </main>
 
   <!-- Bandeau images Are.na : replié par défaut, dépliable via le + -->
@@ -60,21 +67,21 @@
   <!-- Player live monté ici (hors-écran) -->
   <div class="player-mount" id="playerMount"></div>
 
-  <!-- Affichage / masquage du planning entre PLANNING et SUDV11 -->
+  <!-- Affichage / masquage du panneau planning -->
   <script>
     (function () {
       var link = document.getElementById("planningLink");
       var figure = document.getElementById("planningFigure");
 
-      link.addEventListener("click", function () {
-        figure.hidden = !figure.hidden;
-        link.classList.toggle("is-open", !figure.hidden);
-      });
+      function setOpen(open) {
+        figure.hidden = !open;
+        link.classList.toggle("is-open", open);
+        link.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+
+      link.addEventListener("click", function () { setOpen(figure.hidden); });
       document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape" && !figure.hidden) {
-          figure.hidden = true;
-          link.classList.remove("is-open");
-        }
+        if (e.key === "Escape" && !figure.hidden) setOpen(false);
       });
     })();
   </script>
@@ -238,6 +245,8 @@
       var lbImg = document.getElementById("lbImg");
       var lbCap = document.getElementById("lbCap");
 
+      var field = document.getElementById("field");
+
       var items = [];    // { thumb, full, title }
       var index = -1;    // image ouverte en grand
       var signature = ""; // évite de reconstruire la grille pour rien
@@ -284,8 +293,81 @@
         else if (e.key === "ArrowRight") open(index + 1);
       });
 
+      /* ---- champ de photos (page principale) ---- */
+
+      // Pseudo-aléatoire déterministe : la mise en page ne saute pas d'un rendu à l'autre
+      function rnd(n) {
+        var x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+        return x - Math.floor(x);
+      }
+
+      function layout() {
+        var w = window.innerWidth;
+        if (w < 700) return { cols: 3, rows: 5 };
+        if (w < 1100) return { cols: 4, rows: 4 };
+        return { cols: 5, rows: 4 };
+      }
+
+      function renderField() {
+        var L = layout();
+        var cw = 100 / L.cols;
+        var ch = 100 / L.rows;
+        var cellW = field.clientWidth / L.cols;
+        var maxH = (field.clientHeight / L.rows) * 0.82;   // aucune image ne déborde de sa case
+        field.innerHTML = "";
+
+        items.slice(0, L.cols * L.rows).forEach(function (it, i) {
+          var col = i % L.cols;
+          var row = Math.floor(i / L.cols);
+          var w = cellW * (0.34 + rnd(i + 17) * 0.38);     // tailles différentes
+
+          // une case par image, décalée au hasard : grille lisible mais jamais alignée
+          var slot = document.createElement("div");
+          slot.className = "photo-slot";
+          slot.style.left = (cw * (col + 0.5) + (rnd(i + 1) - 0.5) * cw * 0.34) + "%";
+          slot.style.top = (ch * (row + 0.5) + (rnd(i + 9) - 0.5) * ch * 0.34) + "%";
+          slot.style.width = w + "px";
+          slot.style.zIndex = String(2 + (i % 5));
+
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "photo";
+          btn.title = it.title || "";
+          btn.setAttribute("aria-label", it.title || "Agrandir l'image");
+          // dérive lente, propre à chaque image
+          btn.style.setProperty("--dx", (6 + rnd(i + 23) * 16).toFixed(1) + "px");
+          btn.style.setProperty("--dy", (6 + rnd(i + 31) * 16).toFixed(1) + "px");
+          btn.style.setProperty("--r", ((rnd(i + 41) - 0.5) * 3).toFixed(2) + "deg");
+          btn.style.animationDuration = (48 + rnd(i + 53) * 46).toFixed(1) + "s";
+          btn.style.animationDelay = "-" + (rnd(i + 67) * 40).toFixed(1) + "s";
+
+          var img = document.createElement("img");
+          // une fois les proportions connues, on rétrécit les portraits pour rester dans la case
+          img.addEventListener("load", function () {
+            if (!img.naturalWidth || !img.naturalHeight) return;
+            var ratio = img.naturalHeight / img.naturalWidth;
+            if (w * ratio > maxH) slot.style.width = (maxH / ratio) + "px";
+          });
+          img.src = it.mid;
+          img.alt = it.title || "";
+          img.loading = "lazy";
+          btn.appendChild(img);
+          btn.addEventListener("click", function () { open(i); });
+
+          slot.appendChild(btn);
+          field.appendChild(slot);
+        });
+      }
+
+      var resizeT = null;
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeT);
+        resizeT = setTimeout(renderField, 200);
+      });
+
       /* ---- grille ---- */
       function render() {
+        renderField();
         count.textContent = items.length ? String(items.length) : "";
         if (!items.length) {
           grid.innerHTML = '<p class="rail-empty">Aucune image pour le moment. Connecte une image à la channel Are.na image_SUDV11.</p>';
@@ -314,7 +396,8 @@
         var thumb = (im.thumb && im.thumb.url) || (im.display && im.display.url);
         var full = (im.large && im.large.url) || (im.display && im.display.url) || (im.original && im.original.url);
         if (!thumb || !full) return null;
-        return { thumb: thumb, full: full, title: (b.title || "").trim() };
+        var mid = (im.display && im.display.url) || full;
+        return { thumb: thumb, mid: mid, full: full, title: (b.title || "").trim() };
       }
 
       function load() {

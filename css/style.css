@@ -32,59 +32,17 @@ html, body { margin: 0; height: 100%; }
   /* Blanc légèrement moins clair (blanc cassé chaud) */
   --color-bg: #f4f3ef;
   --color-stroke: #000000;
+
+  --header-h: 64px;
+  --ticker-h: 38px;          /* 36px + bordure basse */
+  --rail-expanded: min(40vw, 440px);
+  --rail-tab: 36px;          /* seul le + dépasse quand le rail est replié */
 }
 
 /* ===== Base ===== */
 body {
   background: var(--color-bg);
   font-family: "ABC Schengen C", system-ui, sans-serif;
-}
-
-/* ===== Scène (page unique, sans scroll) ===== */
-.stage {
-  position: relative;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;          /* chaque enfant gère son alignement */
-  justify-content: center;
-  gap: clamp(0.25rem, 1.2vw, 0.75rem);
-  padding-inline: 4vw;
-  overflow: hidden;
-}
-
-/* PLANNING : Schengen gras, REMPLI noir, ancré à gauche, cliquable */
-.planning-link {
-  align-self: flex-start;        /* part de la gauche */
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-
-  font-family: "ABC Schengen C", system-ui, sans-serif;
-  font-weight: 700;
-  font-size: clamp(1.25rem, 5vw, 4.5rem);   /* plus petit que SUDV11 */
-  line-height: 1;
-  letter-spacing: 0.04em;
-  text-align: left;
-  color: var(--color-stroke);    /* plein noir */
-}
-.planning-link:hover { opacity: 0.7; }
-
-/* Image du planning, insérée entre PLANNING et SUDV11, ancrée à gauche */
-.planning-figure {
-  align-self: flex-start;
-  margin: 0;
-}
-.planning-figure[hidden] { display: none; }
-.planning-figure img {
-  display: block;
-  width: auto;
-  height: auto;
-  max-width: min(92vw, 900px);
-  max-height: 42vh;              /* reste dans l'écran, pas de scroll */
-  border: 2px solid var(--color-stroke);
 }
 
 /* ===== Header : seulement la ligne du bas noire ===== */
@@ -97,14 +55,57 @@ body {
 
   display: flex;
   align-items: center;
-  justify-content: flex-end;   /* contenu en haut à droite */
+  justify-content: space-between;   /* PLANNING à gauche, play + statut à droite */
   gap: 12px;
 
-  height: 64px;
+  height: var(--header-h);
   padding: 0 16px;
 
-  background: transparent;
+  background: var(--color-bg);
   border-bottom: 2px solid var(--color-stroke);
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* PLANNING : Schengen gras, rempli noir, dans le header à gauche */
+.planning-link {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+
+  font-family: "ABC Schengen C", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(1rem, 2.2vw, 1.6rem);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-align: left;
+  color: var(--color-stroke);
+}
+.planning-link:hover { opacity: 0.7; }
+.planning-link.is-open { text-decoration: underline; text-underline-offset: 4px; }
+
+/* Image du planning : panneau ancré sous le header, à gauche */
+.planning-figure {
+  position: fixed;
+  top: calc(var(--header-h) + var(--ticker-h) + 12px);
+  left: 16px;
+  z-index: 20;
+  margin: 0;
+}
+.planning-figure[hidden] { display: none; }
+.planning-figure img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(92vw, 900px);
+  max-height: calc(100vh - var(--header-h) - var(--ticker-h) - 40px);
+  border: 2px solid var(--color-stroke);
+  background: var(--color-bg);
 }
 
 /* Bouton play sobre (contour noir, même design) */
@@ -180,7 +181,7 @@ body {
 /* ===== Second marquee (ticker Are.na) sous le header ===== */
 .ticker {
   position: fixed;
-  top: 64px;                /* juste sous le header (hauteur du header) */
+  top: var(--header-h);     /* juste sous le header */
   left: 0;
   right: 0;
   z-index: 9;
@@ -222,9 +223,24 @@ body {
   top: 0;
 }
 
-/* ===== Titre SUDV11 : contour noir, sans remplissage, centré ===== */
+/* ===== Scène : champ de photos sous le header ===== */
+.stage {
+  position: relative;
+  height: 100vh;
+  padding-top: calc(var(--header-h) + var(--ticker-h));
+  overflow: hidden;
+}
+
+/* ===== Titre SUDV11 : contour noir, sans remplissage, par-dessus les photos ===== */
 .title {
-  align-self: center;            /* centré */
+  position: absolute;
+  left: 50%;
+  top: calc(50% + (var(--header-h) + var(--ticker-h)) / 2);
+  transform: translate(-50%, -50%);
+  z-index: 20;                   /* les photos passent derrière */
+  pointer-events: none;          /* mais restent cliquables au travers */
+
+  width: 100%;
   text-align: center;
   margin: 0;
   font-weight: 700;
@@ -241,17 +257,55 @@ body {
   opacity: 0.5;
 }
 
-/* ===== Rail images Are.na (bandeau droit, repliable — type NTS) ===== */
-:root {
-  --header-h: 64px;
-  --ticker-h: 38px;          /* 36px + bordure basse */
-  --rail-collapsed: 88px;
-  --rail-expanded: min(40vw, 440px);
+/* Champ des photos : tailles variables, dérive lente */
+.field {
+  position: absolute;
+  left: 3vw;
+  right: calc(3vw + var(--rail-tab));   /* laisse respirer l'onglet + du rail */
+  top: calc(var(--header-h) + var(--ticker-h) + 2vh);
+  bottom: 2vh;
+  z-index: 1;
 }
 
-/* La scène ne passe jamais sous le rail replié */
-.stage { padding-right: calc(4vw + var(--rail-collapsed)); }
+.photo-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
 
+.photo {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 2px solid var(--color-stroke);
+  background: var(--color-bg);
+  cursor: zoom-in;
+
+  animation-name: photo-drift;
+  animation-duration: 60s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+.photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.photo:hover { opacity: 0.75; }
+
+@keyframes photo-drift {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  25%  { transform: translate(var(--dx), calc(var(--dy) * -1)) rotate(var(--r)); }
+  50%  { transform: translate(calc(var(--dx) * -0.6), var(--dy)) rotate(0deg); }
+  75%  { transform: translate(calc(var(--dx) * -1), calc(var(--dy) * -0.4)) rotate(calc(var(--r) * -1)); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo { animation: none; }
+}
+
+/* ===== Rail images Are.na (bandeau droit : seul le + dépasse quand replié) ===== */
 .rail {
   position: fixed;
   top: calc(var(--header-h) + var(--ticker-h));
@@ -259,12 +313,26 @@ body {
   bottom: 0;
   z-index: 8;
 
-  width: var(--rail-collapsed);
+  width: 0;
+  overflow: visible;          /* le + doit dépasser */
   background: var(--color-bg);
-  border-left: 2px solid var(--color-stroke);
+  border-left: 0 solid var(--color-stroke);
   transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.rail[data-open="true"] { width: var(--rail-expanded); }
+.rail[data-open="true"] {
+  width: var(--rail-expanded);
+  border-left-width: 2px;
+}
+
+/* Corps du rail masqué tant que le rail est replié */
+.rail-body {
+  width: var(--rail-expanded);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rail:not([data-open="true"]) .rail-body { display: none; }
 
 /* Bouton + / × collé au bord gauche du rail (comme le + de NTS) */
 .rail-toggle {
@@ -273,8 +341,8 @@ body {
   left: 0;
   transform: translateX(-100%);
 
-  width: 36px;
-  height: 36px;
+  width: var(--rail-tab);
+  height: var(--rail-tab);
   padding: 0;
   border: 2px solid var(--color-stroke);
   border-right: 0;
@@ -310,12 +378,6 @@ body {
 .rail-toggle-icon::after { transform: rotate(90deg); }
 .rail[data-open="true"] .rail-toggle-icon { transform: rotate(45deg); }
 
-.rail-body {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
 .rail-head {
   display: flex;
   align-items: center;
@@ -333,7 +395,6 @@ body {
   white-space: nowrap;
 }
 .rail-count { font-weight: 300; font-style: italic; letter-spacing: 0.04em; }
-.rail:not([data-open="true"]) .rail-count { display: none; }
 
 .rail-grid {
   flex: 1;
@@ -342,12 +403,11 @@ body {
   overscroll-behavior: contain;
 
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   padding: 8px;
   padding-bottom: 56px;          /* dégage l'onglet du chat en bas à droite */
 }
-.rail[data-open="true"] .rail-grid { grid-template-columns: repeat(2, 1fr); }
 
 .rail-thumb {
   display: block;
@@ -438,8 +498,10 @@ body {
 
 @media (max-width: 700px) {
   :root {
-    --rail-collapsed: 64px;
     --rail-expanded: min(86vw, 380px);
+    --rail-tab: 32px;
   }
   .rail-head { font-size: 0.6rem; letter-spacing: 0.08em; }
+  .planning-figure { left: 8px; right: 8px; }
+  .planning-figure img { max-width: 100%; }
 }
