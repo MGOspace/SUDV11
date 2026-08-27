@@ -29,6 +29,34 @@
     <h1 class="title">SUDV11</h1>
   </main>
 
+  <!-- Bandeau images Are.na : replié par défaut, dépliable via le + -->
+  <aside class="rail" id="rail" data-open="false">
+    <button class="rail-toggle" id="railToggle" type="button"
+            aria-expanded="false" aria-controls="railBody" aria-label="Déplier les images">
+      <span class="rail-toggle-icon"></span>
+    </button>
+    <div class="rail-body" id="railBody">
+      <div class="rail-head">
+        <span>IMAGES</span>
+        <span class="rail-count" id="railCount"></span>
+      </div>
+      <div class="rail-grid" id="railGrid"></div>
+    </div>
+  </aside>
+
+  <!-- Image en grand -->
+  <div class="lightbox" id="lightbox" hidden>
+    <div class="lightbox-nav">
+      <button type="button" id="lbPrev" aria-label="Image précédente">&#8592;</button>
+      <button type="button" id="lbNext" aria-label="Image suivante">&#8594;</button>
+      <button type="button" id="lbClose" aria-label="Fermer">&#215;</button>
+    </div>
+    <figure>
+      <img id="lbImg" alt="">
+      <figcaption id="lbCap"></figcaption>
+    </figure>
+  </div>
+
   <!-- Player live monté ici (hors-écran) -->
   <div class="player-mount" id="playerMount"></div>
 
@@ -191,6 +219,122 @@
           build(texts);
         })
         .catch(function () { build([]); });
+    })();
+  </script>
+
+  <!-- Rail Are.na : blocs image d'une channel, dépliable + vue en grand -->
+  <script>
+    (function () {
+      // Slug de la channel Are.na (are.na/m-go-lq0qmuopbtu/image_sudv11)
+      var CHANNEL = "image_sudv11";
+      var POLL = 60000; // rafraîchit la channel toutes les 60 s
+
+      var rail = document.getElementById("rail");
+      var toggle = document.getElementById("railToggle");
+      var grid = document.getElementById("railGrid");
+      var count = document.getElementById("railCount");
+
+      var lightbox = document.getElementById("lightbox");
+      var lbImg = document.getElementById("lbImg");
+      var lbCap = document.getElementById("lbCap");
+
+      var items = [];    // { thumb, full, title }
+      var index = -1;    // image ouverte en grand
+      var signature = ""; // évite de reconstruire la grille pour rien
+
+      /* ---- rail ouvert / fermé ---- */
+      function setOpen(open) {
+        rail.dataset.open = open ? "true" : "false";
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.setAttribute("aria-label", open ? "Replier les images" : "Déplier les images");
+      }
+      toggle.addEventListener("click", function () {
+        setOpen(rail.dataset.open !== "true");
+      });
+
+      /* ---- vue en grand ---- */
+      function open(i) {
+        if (!items.length) return;
+        index = (i + items.length) % items.length;
+        var it = items[index];
+        lbImg.src = it.full;
+        lbImg.alt = it.title || "Image Are.na";
+        lbCap.textContent = it.title || "";
+        lightbox.hidden = false;
+      }
+      function close() {
+        lightbox.hidden = true;
+        lbImg.removeAttribute("src");
+        index = -1;
+      }
+      document.getElementById("lbClose").addEventListener("click", close);
+      document.getElementById("lbPrev").addEventListener("click", function (e) {
+        e.stopPropagation(); open(index - 1);
+      });
+      document.getElementById("lbNext").addEventListener("click", function (e) {
+        e.stopPropagation(); open(index + 1);
+      });
+      lightbox.addEventListener("click", function (e) {
+        if (e.target === lightbox || e.target.tagName === "FIGURE") close();
+      });
+      document.addEventListener("keydown", function (e) {
+        if (lightbox.hidden) return;
+        if (e.key === "Escape") close();
+        else if (e.key === "ArrowLeft") open(index - 1);
+        else if (e.key === "ArrowRight") open(index + 1);
+      });
+
+      /* ---- grille ---- */
+      function render() {
+        count.textContent = items.length ? String(items.length) : "";
+        if (!items.length) {
+          grid.innerHTML = '<p class="rail-empty">Aucune image pour le moment. Connecte une image à la channel Are.na image_SUDV11.</p>';
+          return;
+        }
+        grid.innerHTML = "";
+        items.forEach(function (it, i) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "rail-thumb";
+          btn.title = it.title || "";
+          var img = document.createElement("img");
+          img.src = it.thumb;
+          img.alt = it.title || "";
+          img.loading = "lazy";
+          btn.appendChild(img);
+          btn.addEventListener("click", function () { open(i); });
+          grid.appendChild(btn);
+        });
+      }
+
+      /* ---- Are.na ---- */
+      function pick(b) {
+        var im = b.image;
+        if (!im) return null; // garde les blocs Image, mais aussi Link/Media qui portent une image
+        var thumb = (im.thumb && im.thumb.url) || (im.display && im.display.url);
+        var full = (im.large && im.large.url) || (im.display && im.display.url) || (im.original && im.original.url);
+        if (!thumb || !full) return null;
+        return { thumb: thumb, full: full, title: (b.title || "").trim() };
+      }
+
+      function load() {
+        fetch("https://api.are.na/v2/channels/" + CHANNEL + "/contents?per=100", { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var next = (d.contents || []).map(pick).filter(Boolean).reverse(); // plus récent en premier
+            var sig = next.map(function (it) { return it.thumb; }).join("|");
+            if (sig === signature) return;
+            signature = sig;
+            items = next;
+            if (!lightbox.hidden) close();
+            render();
+          })
+          .catch(function () { if (!items.length) render(); });
+      }
+
+      render();
+      load();
+      setInterval(load, POLL);
     })();
   </script>
 
