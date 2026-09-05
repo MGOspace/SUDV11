@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SUDV11</title>
   <meta name="description" content="Site SUDV11">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body>
   <!-- Header : PLANNING à gauche, play + statut à droite -->
@@ -31,9 +31,14 @@
   </div>
 
   <main class="stage">
-    <h1 class="title">SUDV11</h1>
-    <!-- Photos Are.na : tailles variables, dérive lente, clic = vue en grand -->
-    <div class="field" id="field"></div>
+    <!-- Le titre est un portail : les lettres sont remplies par une vue du
+         plan, et le clic projette le mot vers le lecteur avant d'y entrer -->
+    <canvas class="word-canvas" id="wordCanvas" aria-hidden="true"></canvas>
+    <!-- Le plan n'est pas encore ouvert : le mot n'est plus un lien, il n'y a
+         donc aucune URL a deviner. Pour le rouvrir, remettre :
+         <a class="title" id="titlePortal" href="pics.html">SUDV11</a>          -->
+    <span class="title" id="titlePortal" role="img" aria-label="SUDV11">SUDV11</span>
+    <p class="tagline" id="tagline">ce soir 20h....</p>
   </main>
 
   <!-- Bandeau images Are.na : replié par défaut, dépliable via le + -->
@@ -51,18 +56,6 @@
     </div>
   </aside>
 
-  <!-- Image en grand -->
-  <div class="lightbox" id="lightbox" hidden>
-    <div class="lightbox-nav">
-      <button type="button" id="lbPrev" aria-label="Image précédente">&#8592;</button>
-      <button type="button" id="lbNext" aria-label="Image suivante">&#8594;</button>
-      <button type="button" id="lbClose" aria-label="Fermer">&#215;</button>
-    </div>
-    <figure>
-      <img id="lbImg" alt="">
-      <figcaption id="lbCap"></figcaption>
-    </figure>
-  </div>
 
   <!-- Player live monté ici (hors-écran) -->
   <div class="player-mount" id="playerMount"></div>
@@ -229,195 +222,217 @@
     })();
   </script>
 
-  <!-- Rail Are.na : blocs image d'une channel, dépliable + vue en grand -->
+  <!-- Rail : volet droit, vide pour l'instant, dépliable via le + -->
   <script>
     (function () {
-      // Slug de la channel Are.na (are.na/m-go-lq0qmuopbtu/image_sudv11)
-      var CHANNEL = "image_sudv11";
-      var POLL = 60000; // rafraîchit la channel toutes les 60 s
-
       var rail = document.getElementById("rail");
       var toggle = document.getElementById("railToggle");
-      var grid = document.getElementById("railGrid");
-      var count = document.getElementById("railCount");
-
-      var lightbox = document.getElementById("lightbox");
-      var lbImg = document.getElementById("lbImg");
-      var lbCap = document.getElementById("lbCap");
-
-      var field = document.getElementById("field");
-
-      var items = [];    // { thumb, full, title }
-      var index = -1;    // image ouverte en grand
-      var signature = ""; // évite de reconstruire la grille pour rien
-
-      /* ---- rail ouvert / fermé ---- */
       function setOpen(open) {
         rail.dataset.open = open ? "true" : "false";
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
-        toggle.setAttribute("aria-label", open ? "Replier les images" : "Déplier les images");
+        toggle.setAttribute("aria-label", open ? "Replier le volet" : "Déplier le volet");
       }
       toggle.addEventListener("click", function () {
         setOpen(rail.dataset.open !== "true");
       });
+    })();
+  </script>
 
-      /* ---- vue en grand ---- */
-      function open(i) {
-        if (!items.length) return;
-        index = (i + items.length) % items.length;
-        var it = items[index];
-        lbImg.src = it.full;
-        lbImg.alt = it.title || "Image Are.na";
-        lbCap.textContent = it.title || "";
-        lightbox.hidden = false;
-      }
-      function close() {
-        lightbox.hidden = true;
-        lbImg.removeAttribute("src");
-        index = -1;
-      }
-      document.getElementById("lbClose").addEventListener("click", close);
-      document.getElementById("lbPrev").addEventListener("click", function (e) {
-        e.stopPropagation(); open(index - 1);
-      });
-      document.getElementById("lbNext").addEventListener("click", function (e) {
-        e.stopPropagation(); open(index + 1);
-      });
-      lightbox.addEventListener("click", function (e) {
-        if (e.target === lightbox || e.target.tagName === "FIGURE") close();
-      });
-      document.addEventListener("keydown", function (e) {
-        if (lightbox.hidden) return;
-        if (e.key === "Escape") close();
-        else if (e.key === "ArrowLeft") open(index - 1);
-        else if (e.key === "ArrowRight") open(index + 1);
-      });
+  <!-- Le plan vit derrière la page : des bulles dérivent en permanence, et on
+       ne les voit qu'à travers les lettres. Au survol le mot gonfle lentement ;
+       au clic il fonce vers le lecteur et on entre. Tout est peint dans un seul
+       canvas — pas de masque CSS à tenir aligné, une seule source de vérité. -->
+  <script>
+    (function () {
+      var cv = document.getElementById("wordCanvas");
+      var portal = document.getElementById("titlePortal");
+      if (!cv || !portal || !cv.getContext) return;
+      var ctx = cv.getContext("2d");
 
-      /* ---- champ de photos (page principale) ---- */
+      var MOT = "SUDV11";
+      var N = 72;            // bulles simulées : assez pour qu'aucune lettre
+                             // ne se retrouve vide quand elles dérivent
+      var HOVER = 1.09;      // gonflement maximal au survol
+      var TAU = 0.55;        // secondes — lenteur du gonflement et du dégonflement
+      var DERIVE = 11;       // px/s
+      var doux = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-      // Pseudo-aléatoire déterministe : la mise en page ne saute pas d'un rendu à l'autre
-      function rnd(n) {
-        var x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
-        return x - Math.floor(x);
+      var W = 0, H = 0, DPR = 1, police = 0, boxW = 0, cx = 0, cy = 0;
+      var S = 1, cible = 1, phase = "repos", t0 = 0, depart = 1;
+      var atlas = null, meta = null, prets = false;
+
+      // Les bulles vivent dans le repère du mot : quand il grossit, elles
+      // grossissent avec lui. C'est ce qui donne la sensation d'entrer dedans
+      // plutôt que de zoomer sur une image.
+      var px = [], py = [], vx = [], vy = [], r = [], img = [], ph = [], w1 = [], w2 = [];
+
+      function police_css() {
+        return Math.min(240, Math.max(48, W * 0.16));
       }
 
-      function layout() {
-        var w = window.innerWidth;
-        if (w < 700) return { cols: 3, rows: 5 };
-        if (w < 1100) return { cols: 4, rows: 4 };
-        return { cols: 5, rows: 4 };
+      function mesure() {
+        var cs = getComputedStyle(document.documentElement);
+        var hh = parseFloat(cs.getPropertyValue("--header-h")) || 64;
+        var th = parseFloat(cs.getPropertyValue("--ticker-h")) || 38;
+        DPR = Math.min(2, window.devicePixelRatio || 1);
+        W = window.innerWidth; H = window.innerHeight;
+        cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+        police = police_css();
+        cx = W / 2;
+        cy = hh + th + (H - hh - th) / 2;
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        applique_police();
+        boxW = ctx.measureText(MOT).width;
+
+        // la ligne du dessous suit le mot peint, pas une valeur en dur
+        var tag = document.getElementById("tagline");
+        if (tag) tag.style.top = Math.round(cy + police * 0.66) + "px";
       }
 
-      function renderField() {
-        var L = layout();
-        var cw = 100 / L.cols;
-        var ch = 100 / L.rows;
-        var cellW = field.clientWidth / L.cols;
-        var maxH = (field.clientHeight / L.rows) * 0.82;   // aucune image ne déborde de sa case
-        field.innerHTML = "";
-
-        items.slice(0, L.cols * L.rows).forEach(function (it, i) {
-          var col = i % L.cols;
-          var row = Math.floor(i / L.cols);
-          var w = cellW * (0.34 + rnd(i + 17) * 0.38);     // tailles différentes
-
-          // une case par image, décalée au hasard : grille lisible mais jamais alignée
-          var slot = document.createElement("div");
-          slot.className = "photo-slot";
-          slot.style.left = (cw * (col + 0.5) + (rnd(i + 1) - 0.5) * cw * 0.34) + "%";
-          slot.style.top = (ch * (row + 0.5) + (rnd(i + 9) - 0.5) * ch * 0.34) + "%";
-          slot.style.width = w + "px";
-          slot.style.zIndex = String(2 + (i % 5));
-
-          var btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "photo";
-          btn.title = it.title || "";
-          btn.setAttribute("aria-label", it.title || "Agrandir l'image");
-          // dérive lente, propre à chaque image
-          btn.style.setProperty("--dx", (6 + rnd(i + 23) * 16).toFixed(1) + "px");
-          btn.style.setProperty("--dy", (6 + rnd(i + 31) * 16).toFixed(1) + "px");
-          btn.style.setProperty("--r", ((rnd(i + 41) - 0.5) * 3).toFixed(2) + "deg");
-          btn.style.animationDuration = (48 + rnd(i + 53) * 46).toFixed(1) + "s";
-          btn.style.animationDelay = "-" + (rnd(i + 67) * 40).toFixed(1) + "s";
-
-          var img = document.createElement("img");
-          // une fois les proportions connues, on rétrécit les portraits pour rester dans la case
-          img.addEventListener("load", function () {
-            if (!img.naturalWidth || !img.naturalHeight) return;
-            var ratio = img.naturalHeight / img.naturalWidth;
-            if (w * ratio > maxH) slot.style.width = (maxH / ratio) + "px";
-          });
-          img.src = it.mid;
-          img.alt = it.title || "";
-          img.loading = "lazy";
-          btn.appendChild(img);
-          btn.addEventListener("click", function () { open(i); });
-
-          slot.appendChild(btn);
-          field.appendChild(slot);
-        });
+      function applique_police() {
+        ctx.font = "700 " + police + 'px "ABC Schengen C", system-ui, sans-serif';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        if ("letterSpacing" in ctx) ctx.letterSpacing = (police * 0.02) + "px";
       }
 
-      var resizeT = null;
-      window.addEventListener("resize", function () {
-        clearTimeout(resizeT);
-        resizeT = setTimeout(renderField, 200);
-      });
-
-      /* ---- grille ---- */
-      function render() {
-        renderField();
-        count.textContent = items.length ? String(items.length) : "";
-        if (!items.length) {
-          grid.innerHTML = '<p class="rail-empty">Aucune image pour le moment. Connecte une image à la channel Are.na image_SUDV11.</p>';
-          return;
+      function semer() {
+        var demiW = boxW * 0.58, demiH = police * 0.70;
+        for (var i = 0; i < N; i++) {
+          px[i] = (Math.random() * 2 - 1) * demiW;
+          py[i] = (Math.random() * 2 - 1) * demiH;
+          vx[i] = vy[i] = 0;
+          r[i] = police * (0.22 + Math.random() * 0.14);
+          img[i] = meta.images[(Math.random() * meta.images.length) | 0];
+          ph[i] = Math.random() * 6.283;
+          w1[i] = 0.06 + Math.random() * 0.14;
+          w2[i] = 0.06 + Math.random() * 0.14;
         }
-        grid.innerHTML = "";
-        items.forEach(function (it, i) {
-          var btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "rail-thumb";
-          btn.title = it.title || "";
-          var img = document.createElement("img");
-          img.src = it.thumb;
-          img.alt = it.title || "";
-          img.loading = "lazy";
-          btn.appendChild(img);
-          btn.addEventListener("click", function () { open(i); });
-          grid.appendChild(btn);
+      }
+
+      function pas(dt, t) {
+        var demiW = boxW * 0.58, demiH = police * 0.70;
+        for (var i = 0; i < N; i++) {
+          vx[i] += (Math.cos(t * w1[i] + ph[i]) * DERIVE - vx[i]) * 0.04;
+          vy[i] += (Math.sin(t * w2[i] + ph[i]) * DERIVE - vy[i]) * 0.04;
+          px[i] += vx[i] * dt; py[i] += vy[i] * dt;
+          if (px[i] < -demiW) { px[i] = -demiW; vx[i] = Math.abs(vx[i]); }
+          if (px[i] > demiW) { px[i] = demiW; vx[i] = -Math.abs(vx[i]); }
+          if (py[i] < -demiH) { py[i] = -demiH; vy[i] = Math.abs(vy[i]); }
+          if (py[i] > demiH) { py[i] = demiH; vy[i] = -Math.abs(vy[i]); }
+        }
+        for (var a = 0; a < N; a++) {
+          for (var b = a + 1; b < N; b++) {
+            var dx = px[b] - px[a], dy = py[b] - py[a];
+            var d = Math.hypot(dx, dy) || 1, ov = r[a] + r[b] - d;
+            if (ov <= 0) continue;
+            var ux = dx / d * ov * 0.05, uy = dy / d * ov * 0.05;
+            px[a] -= ux; py[a] -= uy; px[b] += ux; py[b] += uy;
+          }
+        }
+      }
+
+      function dessine() {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+        if (!prets) return;
+
+        var C = meta.cell;
+        for (var i = 0; i < N; i++) {
+          var R = r[i] * S, X = cx + px[i] * S, Y = cy + py[i] * S;
+          if (X + R < 0 || X - R > W || Y + R < 0 || Y - R > H) continue;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(X, Y, R, 0, 6.2832);
+          ctx.clip();
+          ctx.drawImage(atlas, img[i].x * C, img[i].y * C, C, C, X - R, Y - R, R * 2, R * 2);
+          ctx.restore();
+        }
+
+        // on ne garde que ce qui traverse les lettres
+        applique_police();
+        ctx.save();
+        ctx.font = "700 " + (police * S) + 'px "ABC Schengen C", system-ui, sans-serif';
+        if ("letterSpacing" in ctx) ctx.letterSpacing = (police * S * 0.02) + "px";
+        ctx.globalCompositeOperation = "destination-in";
+        ctx.fillStyle = "#000";
+        ctx.fillText(MOT, cx, cy);
+        ctx.globalCompositeOperation = "source-over";
+        // le contour garde son épaisseur quelle que soit l'échelle
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = getComputedStyle(document.documentElement)
+                            .getPropertyValue("--color-stroke").trim() || "#000";
+        ctx.strokeText(MOT, cx, cy);
+        ctx.restore();
+      }
+
+      var prec = 0;
+      function boucle(now) {
+        var dt = Math.min(0.05, (now - prec) / 1000); prec = now;
+        if (phase === "repos") {
+          S += (cible - S) * (1 - Math.exp(-dt / TAU));
+        } else if (phase === "entre") {
+          var k = Math.min(1, (now - t0) / 800);
+          S = depart + (16 - depart) * (k * k * k);
+        } else if (phase === "retour") {
+          var q = Math.min(1, (now - t0) / 550);
+          S = 1 + (7 - 1) * Math.pow(1 - q, 3);
+          if (q >= 1) phase = "repos";
+        }
+        pas(dt, now / 1000);
+        dessine();
+        requestAnimationFrame(boucle);
+      }
+
+      /* ---- survol : le mot gonfle lentement, comme une bulle ---- */
+      portal.addEventListener("pointerenter", function () {
+        if (phase === "repos" && !doux) cible = HOVER;
+      });
+      portal.addEventListener("pointerleave", function () {
+        if (phase === "repos") cible = 1;
+      });
+      portal.addEventListener("focus", function () { if (!doux) cible = HOVER; });
+      portal.addEventListener("blur", function () { cible = 1; });
+
+      /* ---- clic : on entre dans le texte, si le plan est ouvert ---- */
+      var parti = false;
+      if (portal.tagName === "A" && portal.getAttribute("href"))
+      portal.addEventListener("click", function (e) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+        e.preventDefault();
+        if (doux) { location.href = portal.href; return; }
+        document.body.classList.add("entering");
+        phase = "entre"; t0 = performance.now(); depart = S;
+        setTimeout(function () { if (!parti) { parti = true; location.href = portal.href; } }, 820);
+      });
+
+      window.addEventListener("resize", function () {
+        var avantW = boxW, avantP = police;
+        mesure();
+        var k = police / (avantP || police);
+        for (var i = 0; i < N; i++) { px[i] *= k; py[i] *= k; r[i] *= k; }
+      });
+
+      mesure();
+      var im = new Image();
+      im.onload = function () {
+        atlas = im;
+        fetch("assets/mini.json").then(function (r) { return r.json(); }).then(function (m) {
+          meta = m; semer(); prets = true;
+          document.body.classList.add("canvas-word");
+          // on revient du plan : le mot se repose
+          try {
+            if (sessionStorage.getItem("sudv11.retour")) {
+              sessionStorage.removeItem("sudv11.retour");
+              if (!doux) { phase = "retour"; t0 = performance.now(); }
+            }
+          } catch (err) {}
         });
-      }
+      };
+      (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve())
+        .then(function () { mesure(); im.src = "assets/mini.jpg"; });
 
-      /* ---- Are.na ---- */
-      function pick(b) {
-        var im = b.image;
-        if (!im) return null; // garde les blocs Image, mais aussi Link/Media qui portent une image
-        var thumb = (im.thumb && im.thumb.url) || (im.display && im.display.url);
-        var full = (im.large && im.large.url) || (im.display && im.display.url) || (im.original && im.original.url);
-        if (!thumb || !full) return null;
-        var mid = (im.display && im.display.url) || full;
-        return { thumb: thumb, mid: mid, full: full, title: (b.title || "").trim() };
-      }
-
-      function load() {
-        fetch("https://api.are.na/v2/channels/" + CHANNEL + "/contents?per=100", { cache: "no-store" })
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            var next = (d.contents || []).map(pick).filter(Boolean).reverse(); // plus récent en premier
-            var sig = next.map(function (it) { return it.thumb; }).join("|");
-            if (sig === signature) return;
-            signature = sig;
-            items = next;
-            if (!lightbox.hidden) close();
-            render();
-          })
-          .catch(function () { if (!items.length) render(); });
-      }
-
-      render();
-      load();
-      setInterval(load, POLL);
+      requestAnimationFrame(function (t) { prec = t; boucle(t); });
     })();
   </script>
 

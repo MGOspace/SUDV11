@@ -231,78 +231,144 @@ body {
   overflow: hidden;
 }
 
-/* ===== Titre SUDV11 : contour noir, sans remplissage, par-dessus les photos ===== */
+/* ===== Titre SUDV11 : un portail =====
+   Les lettres ne sont plus vides : elles sont remplies par une vue du plan.
+   Le contour noir reste, c'est lui qui tient l'identité. Au clic, le mot se
+   projette vers le lecteur — on n'ouvre pas une page, on entre dans le texte. */
 .title {
   position: absolute;
   left: 50%;
   top: calc(50% + (var(--header-h) + var(--ticker-h)) / 2);
   transform: translate(-50%, -50%);
-  z-index: 20;                   /* les photos passent derrière */
-  pointer-events: none;          /* mais restent cliquables au travers */
+  z-index: 20;
 
-  width: 100%;
+  display: inline-block;
+  width: auto;
+  white-space: nowrap;
   text-align: center;
   margin: 0;
   font-weight: 700;
   font-size: clamp(3rem, 16vw, 15rem);
   line-height: 1;
   letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
 
-  /* Pas de remplissage, contour noir */
+  /* le plan dans les lettres */
+  background-image: url("../assets/title_plan.jpg");
+  background-size: cover;
+  background-position: center;
+  -webkit-background-clip: text;
+  background-clip: text;
   color: transparent;
   -webkit-text-stroke: 2px var(--color-stroke);
   text-stroke: 2px var(--color-stroke);
-
-  /* Opacité réduite (1 = plein, 0 = invisible) */
-  opacity: 0.5;
 }
 
-/* Champ des photos : tailles variables, dérive lente */
-.field {
+.title:focus-visible { outline: 2px solid var(--color-stroke); outline-offset: 8px; }
+
+/* Ligne d'annonce sous le titre. Schengen C n'est fournie qu'en Bold (700)
+   et Light (300) : 700 est donc la graisse la plus lourde disponible. */
+.tagline {
   position: absolute;
-  left: 3vw;
-  right: calc(3vw + var(--rail-tab));   /* laisse respirer l'onglet + du rail */
-  top: calc(var(--header-h) + var(--ticker-h) + 2vh);
-  bottom: 2vh;
-  z-index: 1;
+  left: 50%;
+  top: calc(50% + (var(--header-h) + var(--ticker-h)) / 2 + 10vw);
+  transform: translateX(-50%);
+  z-index: 21;
+  margin: 0;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: clamp(1.05rem, 3.2vw, 2.9rem);
+  line-height: 1;
+  letter-spacing: 0.005em;
+  color: var(--color-stroke);
+  pointer-events: none;
 }
 
-.photo-slot {
-  position: absolute;
-  transform: translate(-50%, -50%);
-}
-
-.photo {
-  display: block;
+/* Le canvas peint le mot : bulles en mouvement, découpées par les lettres,
+   contour par-dessus. Il couvre l'écran, mais seul ce qui traverse le mot
+   subsiste — le plan est là en permanence, on ne le voit qu'au travers. */
+.word-canvas {
+  position: fixed;
+  inset: 0;
   width: 100%;
-  padding: 0;
-  border: 2px solid var(--color-stroke);
-  background: var(--color-bg);
-  cursor: zoom-in;
+  height: 100%;
+  z-index: 19;               /* juste sous le lien, qui reste la zone cliquable */
+  pointer-events: none;
+}
 
-  animation-name: photo-drift;
-  animation-duration: 60s;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-  will-change: transform;
+/* Dès que le canvas a pris la main, le titre CSS s'efface : il ne sert plus
+   qu'à recevoir le survol et le clic, et à exister pour les lecteurs d'écran.
+   Sans JS, c'est la version statique ci-dessus qui reste affichée. */
+body.canvas-word .title {
+  background-image: none;
+  -webkit-text-stroke-width: 0;
+  text-stroke-width: 0;
+  color: transparent;
 }
-.photo img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.photo:hover { opacity: 0.75; }
 
-@keyframes photo-drift {
-  0%   { transform: translate(0, 0) rotate(0deg); }
-  25%  { transform: translate(var(--dx), calc(var(--dy) * -1)) rotate(var(--r)); }
-  50%  { transform: translate(calc(var(--dx) * -0.6), var(--dy)) rotate(0deg); }
-  75%  { transform: translate(calc(var(--dx) * -1), calc(var(--dy) * -0.4)) rotate(calc(var(--r) * -1)); }
-  100% { transform: translate(0, 0) rotate(0deg); }
+/* Entrée : le mot fonce vers le lecteur, le reste de la page s'efface.
+   Le remplissage grandit plus vite que les lettres — c'est ce décalage qui
+   donne la sensation de traverser, et non de zoomer sur une image.
+   Le contour s'amincit à mesure : à l'échelle 16 une épaisseur de 0,13 px
+   redonne les 2 px du départ, donc le trait ne grossit jamais.
+   L'opacité ne lâche qu'à la toute fin — avant ça on est encore dedans. */
+@keyframes enter-plan {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    background-size: 100%;
+    -webkit-text-stroke-width: 2px;
+    opacity: 1;
+  }
+  78% { opacity: 1; }
+  100% {
+    transform: translate(-50%, -50%) scale(16);
+    background-size: 340%;
+    -webkit-text-stroke-width: 0.13px;
+    opacity: 0;
+  }
 }
+/* Sans JS uniquement : avec le canvas, l'entrée est jouée par le dessin */
+body.entering:not(.canvas-word) .title {
+  animation: enter-plan .8s cubic-bezier(.55, 0, .85, .38) forwards;
+}
+body.entering .word-canvas { z-index: 30; }
+body.entering .tagline { opacity: 0; transition: opacity .25s ease-out; }
+
+/* Retour depuis le plan : le mot se repose. C'est la fin du mouvement
+   commencé sur l'autre page — on ressort de la lettre, elle se referme. */
+@keyframes back-from-plan {
+  from {
+    transform: translate(-50%, -50%) scale(7);
+    background-size: 260%;
+    -webkit-text-stroke-width: 0.3px;
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    background-size: 100%;
+    -webkit-text-stroke-width: 2px;
+    opacity: 1;
+  }
+}
+body.returning:not(.canvas-word) .title {
+  animation: back-from-plan .55s cubic-bezier(.16, .8, .3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.returning .title { animation: none; }
+}
+body.entering .header,
+body.entering .ticker,
+body.entering .rail,
+body.entering .planning-figure {
+  opacity: 0;
+  transition: opacity .3s ease-out;
+  pointer-events: none;
+}
+body.entering { overflow: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
-  .photo { animation: none; }
+  .title, body.entering .title { transition: none; }
 }
 
 /* ===== Rail images Are.na (bandeau droit : seul le + dépasse quand replié) ===== */
