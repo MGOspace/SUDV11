@@ -62,17 +62,47 @@
      D'ou l'absence de remplissage : il n'en a plus besoin. */
   .hud {
     position: fixed; left: 0; bottom: 0; z-index: 5;
-    width: 302px; box-sizing: border-box;
+    /* Largeur choisie pour qu'AUCUNE ligne ne se replie autrement une fois
+       passee en graisse superieure : mesure faite, la boite ne bouge plus
+       d'un pixel au survol. Le plancher de hauteur laisse en plus une ligne
+       de reserve — si un jour le texte change, ou si la police de repli a
+       d'autres chasses, la boite absorbe au lieu de grandir. Elle est un
+       obstacle physique : la voir changer de taille sous le curseur
+       deplacerait les bulles autour d'elle. */
+    width: 344px; min-height: 268px; box-sizing: border-box;
     padding: 8px 10px 9px;
     border: 1px solid #000;
-    font-family: "ABC Schengen C", system-ui, sans-serif;
+    /* la variable, pour que la graisse puisse monter d'un trait au survol */
+    font-family: "ABC Schengen C Var", "ABC Schengen C", system-ui, sans-serif;
+    font-variation-settings: "wght" 300;
     font-weight: 300; font-size: 12px; line-height: 1.5;
     color: #000; letter-spacing: .02em; pointer-events: none;
     text-transform: uppercase;
   }
-  .hud b { font-weight: 700; }
+  .hud b { font-variation-settings: "wght" 800; font-weight: 700; }
   .hud .k { opacity: .45; }
-  .hud .aide { margin-top: 5px; line-height: 1.45; }
+  .hud .aide { margin-top: 6px; }
+  /* L'invitation, detachee de la liste des touches : celle-ci est une
+     reference qu'on relit, celle-la se lit une fois. */
+  .hud .invite { margin-top: 11px; }
+
+  /* Une ligne repond au survol d'un bloc : l'unite est la commande, pas le
+     mot sous le curseur. Une commande qui se replie sur deux lignes
+     s'epaissit donc des deux. Le retrait se fait par la couleur et non par
+     l'opacite, car l'opacite d'un parent s'applique a tout son contenu et
+     aucune ligne ne pourrait alors reprendre sa pleine presence. */
+  .hud .aide > div,
+  .hud .invite > div {
+    pointer-events: auto;
+    line-height: 1.45;
+    color: rgba(0, 0, 0, .45);
+    transition: font-variation-settings .18s ease, color .18s ease;
+  }
+  .hud .aide > div:hover,
+  .hud .invite > div:hover {
+    font-variation-settings: "wght" 700;
+    color: #000;
+  }
 
   .tools { position: fixed; right: 14px; bottom: 12px; z-index: 5; display: flex; gap: 8px; }
   .tools button {
@@ -115,7 +145,18 @@
 
 <div class="hud">
   <div><b id="hN">—</b> images <span class="k">·</span> <b id="hC">0</b> clics <span class="k">·</span> <b id="hL">0</b> liens</div>
-  <div class="k aide">échap : sortir <span>·</span> molette : déplacer <span>·</span> survol : figer <span>·</span> clic : agrandir <span>·</span> presser une bulle contre une autre 3 s : lier <span>·</span> maj + glisser : tirer le plan</div>
+  <div class="aide">
+    <div>échap : sortir</div>
+    <div>molette : déplacer</div>
+    <div>survol : figer</div>
+    <div>clic : agrandir</div>
+    <div>presser une bulle contre une autre 3 s : lier</div>
+    <div>maj + glisser : tirer le plan</div>
+  </div>
+  <div class="invite">
+    <div>Clic pour agrandir l'image</div>
+    <div>Connecte deux bulles en forçant deux d'entre elles à se rencontrer.....</div>
+  </div>
 </div>
 
 <div class="panel closed" id="panel">
@@ -126,12 +167,14 @@
     <label>dérive <span id="vD"></span><input id="sD" type="range" min="0" max="60" step="1"></label>
     <label>dégonflement <span id="vT"></span><input id="sT" type="range" min="0.08" max="1.5" step="0.02"></label>
     <label>gonflement / clic <span id="vB"></span><input id="sB" type="range" min="0.05" max="2" step="0.05"></label>
-    <label>gonflement max <span id="vX"></span><input id="sX" type="range" min="0.5" max="8" step="0.25"></label>
+    <label>gonflement max <span id="vX"></span><input id="sX" type="range" min="0.5" max="12" step="0.25"></label>
     <label>élan du lancer <span id="vL"></span><input id="sL" type="range" min="0.2" max="2.5" step="0.05"></label>
     <label>poussée de la tenue <span id="vP"></span><input id="sP" type="range" min="20" max="600" step="10"></label>
     <label>rebond général <span id="vR"></span><input id="sR" type="range" min="0" max="0.6" step="0.01"></label>
     <label>viscosité <span id="vV"></span><input id="sV" type="range" min="0" max="0.6" step="0.01"></label>
     <label>fermeté du contact <span id="vF"></span><input id="sF" type="range" min="0.06" max="0.9" step="0.02"></label>
+    <label>tension de surface <span id="vTS"></span><input id="sTS" type="range" min="0" max="0.12" step="0.005"></label>
+    <label>portée du rappel <span id="vTD"></span><input id="sTD" type="range" min="0.1" max="1.5" step="0.05"></label>
     <label>rebond du lancer <span id="vFB"></span><input id="sFB" type="range" min="0" max="1" step="0.05"></label>
     <label>fermeté du lancer <span id="vFS"></span><input id="sFS" type="range" min="0.06" max="0.9" step="0.02"></label>
     <label>durée du lien <span id="vT2"></span><input id="sT2" type="range" min="0.5" max="8" step="0.25"></label>
@@ -207,7 +250,7 @@ const CFG = {
                      // d'un clic à l'autre, lisible seulement sur la durée
   RMAX:      2.6,    // garde-fou : rayon max en multiples de R0 (mets 99 pour l'enlever)
   BOOST:     0.60,   // gonflement ajouté par clic — de quoi vraiment voir la photo
-  BOOST_MAX: 4.00,   // gonflement transitoire maximum (x5 le rayon au repos)
+  BOOST_MAX: 6.50,   // gonflement transitoire maximum (x7,5 le rayon au repos)
   GROW:      18,     // vitesse d'inflation : assez vive pour claquer, assez douce
                      // pour que la foule soit repoussée au lieu d'être traversée
   TAU:       0.35,   // secondes — constante de dégonflement quand la souris sort
@@ -218,6 +261,16 @@ const CFG = {
   DRIFT_LERP:0.045,   // à quel point la dérive reprend le dessus sur les chocs
   SEP:       0.16,   // fermeté de la séparation : bas = les corps s'interpénètrent
                      // un instant et se dégagent en s'écoulant, au lieu de claquer
+
+  // La tension de surface. Elle manquait : tout le reste ne fait que
+  // REPOUSSER, si bien qu'une bulle qui gonflait ecartait ses voisines et
+  // laissait un trou en se degonflant — rien ne les ramenait, sinon la derive
+  // au hasard, beaucoup trop lente pour un vide de cette taille. Un liquide,
+  // lui, referme ses trous. C'est cette force-la, et elle seule, qui manquait
+  // pour que le plan en soit vraiment un.
+  TENSION:   0.030,  // fermete du rappel entre voisines proches (0 = aucun)
+  TENSION_D: 0.55,   // portee du rappel au-dela du contact, en fraction du
+                     // plus petit des deux rayons
   BOUNCE:    0.03,   // restitution entre corps libres — un liquide ne rebondit pas
   VISC:      0.16,   // viscosité : dissipation de la vitesse relative au contact
   VISC_GRAB: 0.035,  // viscosité contre la bulle tenue : très basse, sinon les
@@ -660,7 +713,10 @@ const hL = document.getElementById("hL");
   function grid(){
     let maxR = 0;
     for (let i = 0; i < N; i++) if (rad[i] > maxR) maxR = rad[i];
-    CELL = Math.max(2 * maxR, 1);
+    // La maille couvre le contact ET la portee du rappel : sans quoi deux
+    // voisines separees par un vide pourraient tomber dans des cases non
+    // adjacentes, et ne jamais se rappeler.
+    CELL = Math.max(maxR * (2 + CFG.TENSION_D), 1);
     GX = Math.max(1, Math.ceil(WW / CELL));
     GY = Math.max(1, Math.ceil(WH / CELL));
     if (!head || head.length !== GX * GY) head = new Int32Array(GX * GY);
@@ -700,7 +756,12 @@ const hL = document.getElementById("hL");
                 const dx = px[j] - px[i], dy = py[j] - py[i];
                 const sum = rad[i] + rad[j];
                 const d2 = dx*dx + dy*dy;
-                if (d2 >= sum*sum || d2 === 0) continue;
+                if (d2 === 0) continue;
+                // au-dela du contact, la portee du rappel ; nulle pendant le
+                // detassement initial, qui ne doit qu'ecarter
+                const portee = separateOnly ? 0 : CFG.TENSION_D * Math.min(rad[i], rad[j]);
+                const lim = sum + portee;
+                if (d2 >= lim * lim) continue;
                 const d = Math.sqrt(d2);
                 const nxn = dx / d, nyn = dy / d;
                 const ov = sum - d;
@@ -708,6 +769,17 @@ const hL = document.getElementById("hL");
                 const fi = (i === frozen), fj = (j === frozen);
                 let wi = fi ? 0 : 1, wj = fj ? 0 : 1;
                 if (wi + wj === 0) { wi = wj = 0; } else if (wi + wj === 1) { wi *= 2; wj *= 2; }
+
+                if (ov <= 0){
+                  // Elles ne se touchent plus : elles se rappellent. Le rappel
+                  // est nul au contact — l'equilibre est la — et nul a la
+                  // portee ; c'est entre les deux que le vide se referme.
+                  const vide = -ov;
+                  const p = vide * CFG.TENSION * (1 - vide / portee);
+                  px[i] += nxn * p * wi; py[i] += nyn * p * wi;
+                  px[j] -= nxn * p * wj; py[j] -= nyn * p * wj;
+                  continue;
+                }
 
                 // pendant la formation d'un lien, la paire cesse de se repousser
                 // et s'enfonce l'une dans l'autre : deux cellules qui fusionnent.
@@ -817,6 +889,15 @@ const hL = document.getElementById("hL");
     if (!hud) { cadre = null; return; }
     const k = hud.getBoundingClientRect();
     cadre = k.width ? { l: k.left, t: k.top, r: k.right, b: k.bottom } : null;
+  }
+  if (hud){
+    // Une ligne qui passe en graisse superieure ne se replie pas pareil : la
+    // boite change de hauteur, et cette boite est un obstacle. On la remesure
+    // a l'entree, a la sortie, et une fois la transition finie — sinon
+    // l'obstacle et le trait dessine ne diraient plus la meme chose.
+    hud.addEventListener("pointerover", mesureCadre);
+    hud.addEventListener("pointerout", mesureCadre);
+    hud.addEventListener("transitionend", mesureCadre);
   }
 
   /* --- géométrie GPU --- */
@@ -968,7 +1049,10 @@ const hL = document.getElementById("hL");
     }
     grab = -1; downOn = -1; panning = false;
   });
-  cv.addEventListener("wheel", e => {
+  // Les lignes du cadre captent le pointeur pour repondre au survol, elles
+  // avaleraient donc la molette : le meme geste doit continuer de deplacer et
+  // de deployer le plan quand le curseur passe dessus.
+  function molette(e){
     e.preventDefault();
     if (e.ctrlKey || e.metaKey){
       const [wx, wy] = toWorld(e.clientX, e.clientY);
@@ -979,7 +1063,9 @@ const hL = document.getElementById("hL");
       cam.x += e.deltaX / cam.zoom; cam.y += e.deltaY / cam.zoom;
     }
     clampCam();
-  }, { passive: false });
+  }
+  cv.addEventListener("wheel", molette, { passive: false });
+  if (hud) hud.addEventListener("wheel", molette, { passive: false });
 
   let saveT = 0;
   function save(){
@@ -1028,6 +1114,8 @@ const hL = document.getElementById("hL");
   slider("R", "BOUNCE", p2);
   slider("V", "VISC", p2);
   slider("F", "SEP", p2);
+  slider("TS", "TENSION", n => n.toFixed(3));
+  slider("TD", "TENSION_D", p2);
   slider("FB", "FLING_BOUNCE", p2);
   slider("FS", "FLING_SEP", p2);
   slider("T2", "LINK_TIME", n => n.toFixed(1) + " s");
@@ -1051,6 +1139,28 @@ const hL = document.getElementById("hL");
                             if (px[i] < rad[i] - 0.5 || px[i] > WW - rad[i] + 0.5 ||
                                 py[i] < rad[i] - 0.5 || py[i] > WH - rad[i] + 0.5) n++;
                             return n; })(),
+                          // vide moyen : l'ecart de chaque bulle a sa plus
+                          // proche voisine. Il monte quand un trou s'ouvre,
+                          // il redescend quand la tension le referme.
+                          vide: (() => {
+                            grid();
+                            let somme = 0;
+                            for (let i = 0; i < N; i++){
+                              let best = Infinity;
+                              const cx = Math.min(GX-1, Math.max(0, (px[i]/CELL)|0));
+                              const cy = Math.min(GY-1, Math.max(0, (py[i]/CELL)|0));
+                              for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++){
+                                const ax = cx+ox, ay = cy+oy;
+                                if (ax < 0 || ay < 0 || ax >= GX || ay >= GY) continue;
+                                for (let j = head[ay*GX+ax]; j !== -1; j = next[j]){
+                                  if (j === i) continue;
+                                  const g = Math.hypot(px[j]-px[i], py[j]-py[i]) - rad[i] - rad[j];
+                                  if (g < best) best = g;
+                                }
+                              }
+                              if (best < Infinity) somme += Math.max(0, best);
+                            }
+                            return +(somme / N).toFixed(2); })(),
                           sousCadre: (() => {
                             if (!cadre) return 0;
                             const a = toWorld(cadre.l, cadre.t), b = toWorld(cadre.r, cadre.b);
