@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SUDV11</title>
   <meta name="description" content="Site SUDV11">
-  <link rel="stylesheet" href="css/style.css?v=7">
+  <link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
   <!-- Header : PLANNING à gauche, play + statut à droite -->
@@ -38,7 +38,10 @@
          donc aucune URL a deviner. Pour le rouvrir, remettre :
          <a class="title" id="titlePortal" href="pics.html">SUDV11</a>          -->
     <span class="title" id="titlePortal" role="img" aria-label="SUDV11">SUDV11</span>
-    <p class="tagline" id="tagline">ce soir 20h....</p>
+    <div class="lines" id="lines">
+      <p class="tagline">ce soir 20h....</p>
+      <p class="subline">sur ton ordinateur ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧</p>
+    </div>
   </main>
 
   <!-- Bandeau images Are.na : replié par défaut, dépliable via le + -->
@@ -266,8 +269,11 @@
       // plutôt que de zoomer sur une image.
       var px = [], py = [], vx = [], vy = [], r = [], img = [], ph = [], w1 = [], w2 = [];
 
+      // La taille vient du CSS (.title, via clamp) : le canvas ne la recalcule
+      // pas, il la lit. Ainsi le mot peint et la zone de survol ne peuvent
+      // jamais diverger, et un seul reglage suffit pour les deux.
       function police_css() {
-        return Math.min(240, Math.max(48, W * 0.16));
+        return parseFloat(getComputedStyle(portal).fontSize) || 120;
       }
 
       function mesure() {
@@ -285,8 +291,8 @@
         boxW = ctx.measureText(MOT).width;
 
         // la ligne du dessous suit le mot peint, pas une valeur en dur
-        var tag = document.getElementById("tagline");
-        if (tag) tag.style.top = Math.round(cy + police * 0.66) + "px";
+        var lignes = document.getElementById("lines");
+        if (lignes) lignes.style.top = Math.round(cy + police * 0.62) + "px";
       }
 
       function applique_police() {
