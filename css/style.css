@@ -260,7 +260,7 @@ body {
   text-align: center;
   margin: 0;
   font-weight: 700;
-  font-size: clamp(3rem, 16vw, 15rem);
+  font-size: clamp(2.6rem, 13vw, 9rem);
   line-height: 1;
   letter-spacing: 0.02em;
   text-decoration: none;
@@ -279,23 +279,38 @@ body {
 
 .title:focus-visible { outline: 2px solid var(--color-stroke); outline-offset: 8px; }
 
-/* Ligne d'annonce sous le titre, en Schengen C Ultra (graisse 1000). */
+/* Les deux lignes sous le titre. Le bloc est posé par le script, juste sous
+   le mot réellement peint ; les lignes s'empilent ensuite toutes seules. */
+.lines {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + (var(--header-h) + var(--ticker-h)) / 2 + 8vw);
+  transform: translateX(-50%);
+  z-index: 21;
+  text-align: center;
+  pointer-events: none;
+}
+.lines p { margin: 0; line-height: 1.15; color: var(--color-stroke); white-space: nowrap; }
+
+/* Schengen C Ultra : graisse 1000 de la variable. */
 .tagline {
   font-family: "ABC Schengen C Var", "ABC Schengen C", system-ui, sans-serif;
   font-variation-settings: "wght" 1000, "slnt" 0;
-  position: absolute;
-  left: 50%;
-  top: calc(50% + (var(--header-h) + var(--ticker-h)) / 2 + 10vw);
-  transform: translateX(-50%);
-  z-index: 21;
-  margin: 0;
-  white-space: nowrap;
   font-weight: 1000;
-  font-size: clamp(1.05rem, 3.2vw, 2.9rem);
-  line-height: 1;
+  font-size: clamp(1.05rem, 3.2vw, 2.4rem);
   letter-spacing: 0.005em;
-  color: var(--color-stroke);
-  pointer-events: none;
+}
+
+/* Ligne du dessous : plus légère, pour que la hiérarchie se lise.
+   Les émoticônes ne sont pas dans Schengen C — le navigateur ira les
+   chercher dans une police système, c'est normal et voulu. */
+.subline {
+  font-family: "ABC Schengen C Var", "ABC Schengen C", system-ui, sans-serif;
+  font-variation-settings: "wght" 500, "slnt" 0;
+  font-weight: 500;
+  font-size: clamp(0.8rem, 1.7vw, 1.25rem);
+  letter-spacing: 0.01em;
+  margin-top: 0.45em !important;
 }
 
 /* Le canvas peint le mot : bulles en mouvement, découpées par les lettres,
@@ -346,7 +361,7 @@ body.entering:not(.canvas-word) .title {
   animation: enter-plan .8s cubic-bezier(.55, 0, .85, .38) forwards;
 }
 body.entering .word-canvas { z-index: 30; }
-body.entering .tagline { opacity: 0; transition: opacity .25s ease-out; }
+body.entering .lines { opacity: 0; transition: opacity .25s ease-out; }
 
 /* Retour depuis le plan : le mot se repose. C'est la fin du mouvement
    commencé sur l'autre page — on ressort de la lettre, elle se referme. */
