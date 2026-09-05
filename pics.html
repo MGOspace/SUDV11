@@ -56,8 +56,15 @@
     body.leaving #plan { animation: none; }
   }
 
+  /* Le cadre du bas n'est pas pose SUR le plan, il est DEDANS : les bulles le
+     heurtent et n'y entrent pas (voir heurteCadre). C'est ce qui rend le texte
+     lisible — pas un fond, mais le vide que le cadre maintient autour de lui.
+     D'ou l'absence de remplissage : il n'en a plus besoin. */
   .hud {
-    position: fixed; left: 14px; bottom: 12px; z-index: 5;
+    position: fixed; left: 0; bottom: 0; z-index: 5;
+    width: 302px; box-sizing: border-box;
+    padding: 8px 10px 9px;
+    border: 1px solid #000;
     font-family: "ABC Schengen C", system-ui, sans-serif;
     font-weight: 300; font-size: 12px; line-height: 1.5;
     color: #000; letter-spacing: .02em; pointer-events: none;
@@ -65,6 +72,7 @@
   }
   .hud b { font-weight: 700; }
   .hud .k { opacity: .45; }
+  .hud .aide { margin-top: 5px; line-height: 1.45; }
 
   .tools { position: fixed; right: 14px; bottom: 12px; z-index: 5; display: flex; gap: 8px; }
   .tools button {
@@ -107,7 +115,7 @@
 
 <div class="hud">
   <div><b id="hN">—</b> images <span class="k">·</span> <b id="hC">0</b> clics <span class="k">·</span> <b id="hL">0</b> liens</div>
-  <div class="k">échap : sortir <span>·</span> molette : déplacer <span>·</span> survol : figer <span>·</span> clic : agrandir <span>·</span> presser une bulle contre une autre 3 s : lier <span>·</span> maj + glisser : tirer le plan</div>
+  <div class="k aide">échap : sortir <span>·</span> molette : déplacer <span>·</span> survol : figer <span>·</span> clic : agrandir <span>·</span> presser une bulle contre une autre 3 s : lier <span>·</span> maj + glisser : tirer le plan</div>
 </div>
 
 <div class="panel closed" id="panel">
@@ -262,7 +270,8 @@ const CFG = {
                      // que les nouvelles y tiennent a la densite du reste
   NUIT_MARGE:1.09,   // ce que les autres laissent en plus : la couture se voit
 
-  ZOOM_MIN:  0.35,
+  // Pas de ZOOM_MIN reglable : le plancher est celui qui fait tenir le plan
+  // juste dans la fenetre, sinon du vide reapparait autour de lui (zoomMin).
   ZOOM_MAX:  3.0,
 };
 
@@ -588,7 +597,29 @@ const hL = document.getElementById("hL");
     ph1[i] = Math.random() * 6.283; ph2[i] = Math.random() * 6.283;
     w1[i] = 0.05 + Math.random() * 0.12; w2[i] = 0.05 + Math.random() * 0.12;
   }
-  const WORLD = Math.round(Math.sqrt(area / CFG.DENSITY));
+  // Le plan prend la FORME de l'ecran ; seule sa SURFACE est fixe, puisqu'elle
+  // ne depend que du nombre de bulles et de la densite voulue. Un plan carre
+  // dans une fenetre large laissait des bandes mortes sur les cotes des qu'on
+  // le deployait entierement : aucune bulle n'y passait jamais. Deploye, il
+  // remplit maintenant l'ecran exactement, bord a bord.
+  const AIRE = area / CFG.DENSITY;
+  let WW = 0, WH = 0;
+  const cam = { x: 0, y: 0, zoom: 1 };
+  function formeMonde(){
+    const l = cv.clientWidth || window.innerWidth || 1;
+    const h = cv.clientHeight || window.innerHeight || 1;
+    const nH = Math.round(Math.sqrt(AIRE * h / l));
+    const nW = Math.round(AIRE / nH);
+    if (WW){                    // la fenetre a change de forme : le plan suit
+      const kx = nW / WW, ky = nH / WH;
+      for (let i = 0; i < N; i++){ px[i] *= kx; py[i] *= ky; }
+      cam.x *= kx; cam.y *= ky;
+    } else {
+      cam.x = nW / 2; cam.y = nH / 2;
+    }
+    WW = nW; WH = nH;
+  }
+  formeMonde();
 
   // taille au repos : t0 + Y·c — additif, un incrément constant par clic
   const restRadius = i => Math.min(base[i] + CFG.Y * clicks[i], CFG.R0 * CFG.RMAX);
@@ -598,42 +629,46 @@ const hL = document.getElementById("hL");
   // soient a la meme densite qu'ailleurs : c'est un quartier, pas un tas.
   // Rien ne les y retient ensuite — la derive fera le melange qu'elle voudra.
   {
-    const rN = WORLD * CFG.NUIT_R, rHors = rN * CFG.NUIT_MARGE;
-    const coin = (x, y) => Math.hypot(x, WORLD - y);   // distance a l'angle
+    // la reference ne peut plus etre un cote, le plan n'est plus carre :
+    // c'est la racine de sa surface, qui ne bouge pas avec la fenetre
+    const ref = Math.sqrt(AIRE);
+    const rN = ref * CFG.NUIT_R, rHors = rN * CFG.NUIT_MARGE;
+    const coin = (x, y) => Math.hypot(x, WH - y);      // distance a l'angle
     for (let i = 0; i < N; i++){
       const r = restRadius(i);
       if (meta.images[i].nuit){
         // racine carree : un quart de disque uniforme, sans entassement au coin
         const a = Math.random() * 1.5708, u = Math.sqrt(Math.random()) * rN;
         px[i] = Math.cos(a) * u;
-        py[i] = WORLD - Math.sin(a) * u;
+        py[i] = WH - Math.sin(a) * u;
       } else {
         let k = 0;
         do {
-          px[i] = 40 + Math.random() * (WORLD - 80);
-          py[i] = 40 + Math.random() * (WORLD - 80);
+          px[i] = 40 + Math.random() * (WW - 80);
+          py[i] = 40 + Math.random() * (WH - 80);
         } while (++k < 24 && coin(px[i], py[i]) < rHors);
       }
-      px[i] = Math.min(WORLD - r, Math.max(r, px[i]));
-      py[i] = Math.min(WORLD - r, Math.max(r, py[i]));
+      px[i] = Math.min(WW - r, Math.max(r, px[i]));
+      py[i] = Math.min(WH - r, Math.max(r, py[i]));
       rad[i] = radTarget[i] = r;
     }
   }
   rebuildLinks();
 
   /* --- grille de voisinage --- */
-  let CELL = 0, GW = 0, head = null, next = new Int32Array(N);
+  let CELL = 0, GX = 0, GY = 0, head = null, next = new Int32Array(N);
   function grid(){
     let maxR = 0;
     for (let i = 0; i < N; i++) if (rad[i] > maxR) maxR = rad[i];
     CELL = Math.max(2 * maxR, 1);
-    GW = Math.max(1, Math.ceil(WORLD / CELL));
-    if (!head || head.length !== GW * GW) head = new Int32Array(GW * GW);
+    GX = Math.max(1, Math.ceil(WW / CELL));
+    GY = Math.max(1, Math.ceil(WH / CELL));
+    if (!head || head.length !== GX * GY) head = new Int32Array(GX * GY);
     head.fill(-1);
     for (let i = 0; i < N; i++){
-      const cx = Math.min(GW - 1, Math.max(0, (px[i] / CELL) | 0));
-      const cy = Math.min(GW - 1, Math.max(0, (py[i] / CELL) | 0));
-      const c = cy * GW + cx;
+      const cx = Math.min(GX - 1, Math.max(0, (px[i] / CELL) | 0));
+      const cy = Math.min(GY - 1, Math.max(0, (py[i] / CELL) | 0));
+      const c = cy * GX + cx;
       next[i] = head[c]; head[c] = i;
     }
   }
@@ -653,14 +688,14 @@ const hL = document.getElementById("hL");
   function collide(separateOnly){
     c1.fill(0); c2.fill(0);
     grid();
-    for (let cy = 0; cy < GW; cy++){
-      for (let cx = 0; cx < GW; cx++){
-        for (let i = head[cy*GW+cx]; i !== -1; i = next[i]){
+    for (let cy = 0; cy < GY; cy++){
+      for (let cx = 0; cx < GX; cx++){
+        for (let i = head[cy*GX+cx]; i !== -1; i = next[i]){
           for (let oy = 0; oy <= 1; oy++){
             for (let ox = (oy === 0 ? 0 : -1); ox <= 1; ox++){
               const nx2 = cx + ox, ny2 = cy + oy;
-              if (nx2 < 0 || nx2 >= GW || ny2 >= GW) continue;
-              let j = (ox === 0 && oy === 0) ? next[i] : head[ny2*GW+nx2];
+              if (nx2 < 0 || nx2 >= GX || ny2 >= GY) continue;
+              let j = (ox === 0 && oy === 0) ? next[i] : head[ny2*GX+nx2];
               for (; j !== -1; j = next[j]){
                 const dx = px[j] - px[i], dy = py[j] - py[i];
                 const sum = rad[i] + rad[j];
@@ -737,30 +772,52 @@ const hL = document.getElementById("hL");
   for (let k = 0; k < 140; k++){
     collide(true);
     for (let i = 0; i < N; i++){
-      px[i] = Math.min(WORLD - rad[i], Math.max(rad[i], px[i]));
-      py[i] = Math.min(WORLD - rad[i], Math.max(rad[i], py[i]));
+      px[i] = Math.min(WW - rad[i], Math.max(rad[i], px[i]));
+      py[i] = Math.min(WH - rad[i], Math.max(rad[i], py[i]));
     }
   }
   CFG.SEP = sep0;
 
   /* --- caméra --- */
-  const cam = { x: WORLD/2, y: WORLD/2, zoom: 1 };
   let W = 0, H = 0, DPR = 1;
+  // Deployer le plan au-dela de sa propre taille ferait reapparaitre du vide
+  // autour de lui. Le plancher de zoom est donc celui qui le fait tenir juste
+  // dans la fenetre ; le plan ayant la forme de l'ecran, les deux axes
+  // tombent ensemble et il la remplit exactement.
+  const zoomMin = () => Math.max(W / WW, H / WH);
   function resize(){
     DPR = Math.min(2, window.devicePixelRatio || 1);
     W = cv.clientWidth; H = cv.clientHeight;
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
     gl.viewport(0, 0, cv.width, cv.height);
+    formeMonde();
+    cam.zoom = Math.min(CFG.ZOOM_MAX, Math.max(zoomMin(), cam.zoom));
+    mesureCadre();
     clampCam();
   }
   function clampCam(){
     const vw = W / cam.zoom, vh = H / cam.zoom;
-    const mx = Math.max(0, (WORLD - vw) / 2), my = Math.max(0, (WORLD - vh) / 2);
-    cam.x = Math.min(WORLD/2 + mx, Math.max(WORLD/2 - mx, cam.x));
-    cam.y = Math.min(WORLD/2 + my, Math.max(WORLD/2 - my, cam.y));
+    const mx = Math.max(0, (WW - vw) / 2), my = Math.max(0, (WH - vh) / 2);
+    cam.x = Math.min(WW/2 + mx, Math.max(WW/2 - mx, cam.x));
+    cam.y = Math.min(WH/2 + my, Math.max(WH/2 - my, cam.y));
   }
   const toWorld = (sx, sy) => [cam.x - W/(2*cam.zoom) + sx/cam.zoom,
                                cam.y - H/(2*cam.zoom) + sy/cam.zoom];
+
+  /* --- le cadre du bas, obstacle solide ---------------------------------
+     Il est fixe a l'ecran, pas dans le monde : c'est un objet pose sur la
+     vitre. On relit donc sa boite en pixels ecran (rarement : elle ne change
+     qu'au redimensionnement ou quand son texte change), et on la traduit en
+     coordonnees monde a chaque image, puisque la camera bouge.
+     Consequence voulue : tirer le plan sous le cadre pousse les bulles
+     devant lui, comme une raclette.                                     */
+  const hud = document.querySelector(".hud");
+  let cadre = null;                       // { l, t, r, b } en px ecran
+  function mesureCadre(){
+    if (!hud) { cadre = null; return; }
+    const k = hud.getBoundingClientRect();
+    cadre = k.width ? { l: k.left, t: k.top, r: k.right, b: k.bottom } : null;
+  }
 
   /* --- géométrie GPU --- */
   const prog = program(gl, VS, FS);
@@ -854,12 +911,12 @@ const hL = document.getElementById("hL");
     if (sx < 0) return -1;
     const [wx, wy] = toWorld(sx, sy);
     let best = -1, bd = Infinity;
-    const cx = Math.min(GW-1, Math.max(0, (wx / CELL) | 0));
-    const cy = Math.min(GW-1, Math.max(0, (wy / CELL) | 0));
+    const cx = Math.min(GX-1, Math.max(0, (wx / CELL) | 0));
+    const cy = Math.min(GY-1, Math.max(0, (wy / CELL) | 0));
     for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++){
       const gx = cx + ox, gy = cy + oy;
-      if (gx < 0 || gy < 0 || gx >= GW || gy >= GW) continue;
-      for (let i = head[gy*GW+gx]; i !== -1; i = next[i]){
+      if (gx < 0 || gy < 0 || gx >= GX || gy >= GY) continue;
+      for (let i = head[gy*GX+gx]; i !== -1; i = next[i]){
         const dx = wx - px[i], dy = wy - py[i];
         const d2 = dx*dx + dy*dy;
         if (d2 < rad[i]*rad[i] && d2 < bd) { bd = d2; best = i; }
@@ -915,7 +972,7 @@ const hL = document.getElementById("hL");
     e.preventDefault();
     if (e.ctrlKey || e.metaKey){
       const [wx, wy] = toWorld(e.clientX, e.clientY);
-      cam.zoom = Math.min(CFG.ZOOM_MAX, Math.max(CFG.ZOOM_MIN, cam.zoom * Math.exp(-e.deltaY * 0.01)));
+      cam.zoom = Math.min(CFG.ZOOM_MAX, Math.max(zoomMin(), cam.zoom * Math.exp(-e.deltaY * 0.01)));
       const [ax, ay] = toWorld(e.clientX, e.clientY);
       cam.x += wx - ax; cam.y += wy - ay;
     } else {
@@ -987,6 +1044,24 @@ const hL = document.getElementById("hL");
   // sonde de console, en mode reglages uniquement
   if (DEV) window.__dbg = () => ({ grab, hover, partner, lprog: +lprog.toFixed(2),
                           sealed, links: links.size, N,
+                          monde: [WW, WH], vue: [W, H],
+                          // invariants : rien ne sort du plan, rien ne reste
+                          // coince sous le cadre
+                          dehors: (() => { let n = 0; for (let i = 0; i < N; i++)
+                            if (px[i] < rad[i] - 0.5 || px[i] > WW - rad[i] + 0.5 ||
+                                py[i] < rad[i] - 0.5 || py[i] > WH - rad[i] + 0.5) n++;
+                            return n; })(),
+                          sousCadre: (() => {
+                            if (!cadre) return 0;
+                            const a = toWorld(cadre.l, cadre.t), b = toWorld(cadre.r, cadre.b);
+                            let n = 0;
+                            for (let i = 0; i < N; i++)
+                              if (px[i] > a[0] && px[i] < b[0] && py[i] > a[1] && py[i] < b[1]) n++;
+                            return n; })(),
+                          zoom: +cam.zoom.toFixed(4), zoomMin: +zoomMin().toFixed(4),
+                          // au plancher, le plan doit couvrir l'ecran pile
+                          couvre: [+(WW * cam.zoom / W).toFixed(3),
+                                   +(WH * cam.zoom / H).toFixed(3)],
                           gapToPartner: partner >= 0 && grab >= 0
                             ? +(Math.hypot(px[partner]-px[grab], py[partner]-py[grab])
                                 - rad[partner] - rad[grab]).toFixed(1) : null });
@@ -1014,12 +1089,12 @@ const hL = document.getElementById("hL");
                ? partner : -1;
       if (best < 0){
         let bg = CFG.LINK_GAP;
-        const gx = Math.min(GW-1, Math.max(0, (px[grab] / CELL) | 0));
-        const gy = Math.min(GW-1, Math.max(0, (py[grab] / CELL) | 0));
+        const gx = Math.min(GX-1, Math.max(0, (px[grab] / CELL) | 0));
+        const gy = Math.min(GY-1, Math.max(0, (py[grab] / CELL) | 0));
         for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++){
           const ax = gx + ox, ay = gy + oy;
-          if (ax < 0 || ay < 0 || ax >= GW || ay >= GW) continue;
-          for (let j = head[ay*GW+ax]; j !== -1; j = next[j]){
+          if (ax < 0 || ay < 0 || ax >= GX || ay >= GY) continue;
+          for (let j = head[ay*GX+ax]; j !== -1; j = next[j]){
             if (j === grab) continue;
             const gap = gapTo(j);
             if (gap < bg){ bg = gap; best = j; }
@@ -1104,12 +1179,69 @@ const hL = document.getElementById("hL");
 
     collide(false);
 
+    // Le cadre d'abord, les bords ensuite : c'est au bord de l'ecran d'avoir
+    // le dernier mot. Dans l'autre sens, une bulle coincee entre le cadre et
+    // le bord se faisait pousser hors du plan et sortait de l'ecran.
+    heurteCadre();
+
     for (let i = 0; i < N; i++){
       const r = rad[i];
       if (px[i] < r){ px[i] = r; vx[i] = Math.abs(vx[i]); }
-      else if (px[i] > WORLD - r){ px[i] = WORLD - r; vx[i] = -Math.abs(vx[i]); }
+      else if (px[i] > WW - r){ px[i] = WW - r; vx[i] = -Math.abs(vx[i]); }
       if (py[i] < r){ py[i] = r; vy[i] = Math.abs(vy[i]); }
-      else if (py[i] > WORLD - r){ py[i] = WORLD - r; vy[i] = -Math.abs(vy[i]); }
+      else if (py[i] > WH - r){ py[i] = WH - r; vy[i] = -Math.abs(vy[i]); }
+    }
+  }
+
+  // Le cadre repousse ce qui le touche. Deux cas : la bulle est dehors et on
+  // la remet sur le bord le plus proche ; elle est entree (le cadre a balaye
+  // le monde pendant un deplacement) et on la sort par la face la plus courte.
+  function heurteCadre(){
+    if (!cadre) return;
+    const a = toWorld(cadre.l, cadre.t), b = toWorld(cadre.r, cadre.b);
+    const x0 = a[0], y0 = a[1], x1 = b[0], y1 = b[1];
+    for (let i = 0; i < N; i++){
+      const r = rad[i], x = px[i], y = py[i];
+      if (x + r < x0 || x - r > x1 || y + r < y0 || y - r > y1) continue;
+
+      if (x > x0 && x < x1 && y > y0 && y < y1){
+        // Dedans — le cadre a balaye le monde, ou on vient de deployer le plan
+        // et son empreinte s'est elargie. On sort par la face la plus courte,
+        // mais SEULEMENT parmi celles qui laissent la bulle dans le plan : le
+        // cadre touche le coin de l'ecran, sortir par la gauche ou par le bas
+        // la jetterait dehors et le mur la repousserait aussitot dessous —
+        // elle resterait coincee la, sous le cadre.
+        let m = Infinity, ex = x, ey = y, sx = 0, sy = 0;
+        const essaie = (cout, x2, y2, dx2, dy2) => {
+          if (cout >= m) return;
+          if (x2 < r || x2 > WW - r || y2 < r || y2 > WH - r) return;
+          m = cout; ex = x2; ey = y2; sx = dx2; sy = dy2;
+        };
+        essaie(x - x0, x0 - r, y, -1, 0);
+        essaie(x1 - x, x1 + r, y,  1, 0);
+        essaie(y - y0, x, y0 - r, 0, -1);
+        essaie(y1 - y, x, y1 + r, 0,  1);
+        if (m < Infinity){
+          px[i] = ex; py[i] = ey;
+          if (sx) vx[i] = sx * Math.abs(vx[i]);
+          if (sy) vy[i] = sy * Math.abs(vy[i]);
+        }
+        continue;
+      }
+
+      // dehors : le point du rectangle le plus proche du centre
+      const cx2 = Math.min(x1, Math.max(x0, x));
+      const cy2 = Math.min(y1, Math.max(y0, y));
+      const dx = x - cx2, dy = y - cy2;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= r * r || d2 === 0) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      px[i] = cx2 + nx * r; py[i] = cy2 + ny * r;
+      const vn = vx[i] * nx + vy[i] * ny;
+      if (vn < 0){                       // elle allait vers le cadre : elle repart
+        const e = 1 + CFG.BOUNCE;
+        vx[i] -= nx * vn * e; vy[i] -= ny * vn * e;
+      }
     }
   }
 
@@ -1197,8 +1329,11 @@ const hL = document.getElementById("hL");
     cv.classList.toggle("over", hover >= 0);
 
     let tot = 0; for (let i = 0; i < N; i++) tot += clicks[i];
-    if (tot !== totalShown){ totalShown = tot; hC.textContent = tot; }
-    if (links.size !== linkShown){ linkShown = links.size; hL.textContent = linkShown; }
+    if (tot !== totalShown || links.size !== linkShown){
+      totalShown = tot; hC.textContent = tot;
+      linkShown = links.size; hL.textContent = linkShown;
+      mesureCadre();      // les chiffres ont grandi : la boite a pu changer de hauteur
+    }
   }
 
   function frame(now){
