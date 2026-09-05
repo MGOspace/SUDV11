@@ -23,6 +23,18 @@
   font-display: swap;
 }
 
+/* Schengen C en variable : axe de graisse 200 -> 1000, où 1000 est l'Ultra.
+   La famille statique ne monte qu'à Bold (700) et n'a pas d'Ultra droit —
+   seulement un UltraItalic. C'est la variable qui donne l'Ultra debout. */
+@font-face {
+  font-family: "ABC Schengen C Var";
+  src: url("../fonts/ABCSchengenCVariable-Trial.woff2") format("woff2-variations"),
+       url("../fonts/ABCSchengenCVariable-Trial.woff") format("woff-variations");
+  font-weight: 200 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ===== Réinitialisation légère ===== */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -267,9 +279,10 @@ body {
 
 .title:focus-visible { outline: 2px solid var(--color-stroke); outline-offset: 8px; }
 
-/* Ligne d'annonce sous le titre. Schengen C n'est fournie qu'en Bold (700)
-   et Light (300) : 700 est donc la graisse la plus lourde disponible. */
+/* Ligne d'annonce sous le titre, en Schengen C Ultra (graisse 1000). */
 .tagline {
+  font-family: "ABC Schengen C Var", "ABC Schengen C", system-ui, sans-serif;
+  font-variation-settings: "wght" 1000, "slnt" 0;
   position: absolute;
   left: 50%;
   top: calc(50% + (var(--header-h) + var(--ticker-h)) / 2 + 10vw);
@@ -277,7 +290,7 @@ body {
   z-index: 21;
   margin: 0;
   white-space: nowrap;
-  font-weight: 700;
+  font-weight: 1000;
   font-size: clamp(1.05rem, 3.2vw, 2.9rem);
   line-height: 1;
   letter-spacing: 0.005em;
