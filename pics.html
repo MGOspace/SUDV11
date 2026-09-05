@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>SUDV11 — plan d'images</title>
+<link rel="stylesheet" href="css/style.css?v=12">
+<style>
+  /* Fond du plan — un seul endroit à changer, le canvas le relit au démarrage.
+     Le reste du site reste sur --color-bg (#f4f3ef) : ce fond n'appartient
+     qu'au plan. Quelques essais : #f2ece0 (chaud, l'actuel), #efe6d5 (plus
+     terreux encore), #f4efe3 (crème plus sage), #f6f2e9 (proche du papier) */
+  :root { --plan-bg: #f2ece0; }
+  html, body { height: 100%; overflow: hidden; background: var(--plan-bg); }
+  #plan { position: fixed; inset: 0; width: 100%; height: 100%;
+           display: block; cursor: default; touch-action: none; }
+  #plan.drag { cursor: grabbing; }
+  #plan.over { cursor: pointer; }
+
+  /* Sortie : le mot revient là où il était sur l'accueil, en haut à gauche.
+     Le clic fait reculer le plan, comme si on ressortait de la lettre. */
+  .exit {
+    position: fixed; left: 14px; top: 12px; z-index: 6;
+    font-family: "ABC Schengen C", system-ui, sans-serif;
+    font-weight: 700; font-size: 13px; letter-spacing: .06em;
+    text-transform: uppercase; text-decoration: none; color: #000;
+    display: inline-flex; align-items: center; gap: 9px;
+    /* le plan est dense : la sortie doit rester lisible par-dessus les photos */
+    background: var(--plan-bg); border: 1px solid #000; border-radius: 999px;
+    padding: 6px 14px 6px 12px;
+  }
+  .exit:hover { background: #000; color: var(--plan-bg); }
+  .exit:hover::before { border-color: var(--plan-bg); }
+  .exit::before {
+    content: ""; width: 13px; height: 13px; flex: none;
+    border-left: 2px solid #000; border-bottom: 2px solid #000;
+    transform: rotate(45deg) translate(1px, -1px);
+    transition: transform .18s ease, border-color .18s ease;
+  }
+  .exit:hover::before { transform: rotate(45deg) translate(-2px, 2px); }
+  .exit:focus-visible { outline: 2px solid #000; outline-offset: 4px; }
+
+  @keyframes leave-plan {
+    from { transform: scale(1);    opacity: 1; }
+    to   { transform: scale(.06);  opacity: 0; }
+  }
+  body.leaving #plan {
+    animation: leave-plan .62s cubic-bezier(.5, .05, .9, .5) forwards;
+    transform-origin: 50% 50%;
+  }
+  body.leaving .hud, body.leaving .panel,
+  body.leaving .tools, body.leaving .exit {
+    opacity: 0; pointer-events: none; transition: opacity .22s ease-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body.leaving #plan { animation: none; }
+  }
+
+  .hud {
+    position: fixed; left: 14px; bottom: 12px; z-index: 5;
+    font-family: "ABC Schengen C", system-ui, sans-serif;
+    font-weight: 300; font-size: 12px; line-height: 1.5;
+    color: #000; letter-spacing: .02em; pointer-events: none;
+    text-transform: uppercase;
+  }
+  .hud b { font-weight: 700; }
+  .hud .k { opacity: .45; }
+
+  .tools { position: fixed; right: 14px; bottom: 12px; z-index: 5; display: flex; gap: 8px; }
+  .tools button {
+    font-family: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    background: transparent; border: 1px solid #000; color: #000;
+    padding: 5px 10px; cursor: pointer; border-radius: 999px;
+  }
+  .tools button:hover { background: #000; color: #f4f3ef; }
+
+  .panel {
+    position: fixed; right: 14px; top: 14px; z-index: 6; width: 210px;
+    font-family: "ABC Schengen C", system-ui, sans-serif; font-size: 10px;
+    text-transform: uppercase; letter-spacing: .04em; color: #000;
+    background: color-mix(in srgb, var(--plan-bg) 92%, transparent);
+    border: 1px solid #000; padding: 10px 11px 11px;
+  }
+  .panel.closed .body { display: none; }
+  .panel h4 { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .06em;
+              display: flex; justify-content: space-between; cursor: pointer; }
+  .panel .body { margin-top: 9px; display: grid; gap: 7px; }
+  .panel label { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; align-items: center; }
+  .panel span { opacity: .5; font-variant-numeric: tabular-nums; }
+  .panel input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: #000; height: 14px; }
+
+  .boot {
+    position: fixed; inset: 0; display: grid; place-items: center; z-index: 10;
+    background: var(--plan-bg); font-family: "ABC Schengen C", system-ui, sans-serif;
+    font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+    transition: opacity .4s ease;
+  }
+  .boot.gone { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<canvas id="plan"></canvas>
+
+<a class="exit" id="exit" href="index.html">SUDV11</a>
+
+
+<div class="hud">
+  <div><b id="hN">—</b> images <span class="k">·</span> <b id="hC">0</b> clics <span class="k">·</span> <b id="hL">0</b> liens</div>
+  <div class="k">échap : sortir <span>·</span> molette : déplacer <span>·</span> survol : figer <span>·</span> clic : agrandir <span>·</span> presser une bulle contre une autre 3 s : lier <span>·</span> maj + glisser : tirer le plan</div>
+</div>
+
+<div class="panel closed" id="panel">
+  <h4 id="panelHead"><span style="opacity:1">réglages</span><span id="panelChev">+</span></h4>
+  <div class="body">
+    <label>gain par clic <span id="vY"></span><input id="sY" type="range" min="0" max="3" step="0.05"></label>
+    <label>épousement <span id="vS"></span><input id="sS" type="range" min="0" max="0.35" step="0.01"></label>
+    <label>dérive <span id="vD"></span><input id="sD" type="range" min="0" max="60" step="1"></label>
+    <label>dégonflement <span id="vT"></span><input id="sT" type="range" min="0.08" max="1.5" step="0.02"></label>
+    <label>gonflement / clic <span id="vB"></span><input id="sB" type="range" min="0.05" max="2" step="0.05"></label>
+    <label>gonflement max <span id="vX"></span><input id="sX" type="range" min="0.5" max="8" step="0.25"></label>
+    <label>élan du lancer <span id="vL"></span><input id="sL" type="range" min="0.2" max="2.5" step="0.05"></label>
+    <label>poussée de la tenue <span id="vP"></span><input id="sP" type="range" min="20" max="600" step="10"></label>
+    <label>rebond général <span id="vR"></span><input id="sR" type="range" min="0" max="0.6" step="0.01"></label>
+    <label>viscosité <span id="vV"></span><input id="sV" type="range" min="0" max="0.6" step="0.01"></label>
+    <label>fermeté du contact <span id="vF"></span><input id="sF" type="range" min="0.06" max="0.9" step="0.02"></label>
+    <label>rebond du lancer <span id="vFB"></span><input id="sFB" type="range" min="0" max="1" step="0.05"></label>
+    <label>fermeté du lancer <span id="vFS"></span><input id="sFS" type="range" min="0.06" max="0.9" step="0.02"></label>
+    <label>durée du lien <span id="vT2"></span><input id="sT2" type="range" min="0.5" max="8" step="0.25"></label>
+    <label>portée du lien <span id="vG"></span><input id="sG" type="range" min="8" max="90" step="2"></label>
+    <label>attraction des liens <span id="vA"></span><input id="sA" type="range" min="0" max="90" step="2"></label>
+    <label>emboîtement <span id="vE"></span><input id="sE" type="range" min="0" max="0.95" step="0.05"></label>
+    <label>recul des autres <span id="vM"></span><input id="sM" type="range" min="0.3" max="1" step="0.02"></label>
+  </div>
+</div>
+
+<div class="tools">
+  <button id="reset" type="button">remettre à zéro</button>
+</div>
+
+<div class="boot" id="boot">chargement du plan…</div>
+
+<script>
+/* ---- Appareils sans souris : on n'ouvre pas le plan, et surtout on ne
+   telecharge pas l'atlas. Le test porte sur la capacite reelle (existe-t-il
+   un pointeur capable de survoler ?) plutot que sur la largeur d'ecran :
+   un portable a ecran tactile a une souris, un telephone non.
+   Pas d'ecran d'explication : on renvoie a l'accueil, qui dit deja
+   « sur ton ordinateur ».                                              ---- */
+var SANS_SOURIS = !window.matchMedia("(any-hover: hover)").matches
+               || !window.matchMedia("(any-pointer: fine)").matches;
+
+if (SANS_SOURIS) {
+  // replace() plutot que href : le plan n'entre pas dans l'historique,
+  // donc le bouton retour du navigateur se comporte normalement.
+  location.replace("index.html");
+}
+
+/* ---- sortie du plan : on recule hors de la lettre ---- */
+(function () {
+  var exit = document.getElementById("exit");
+  if (!exit) return;                       // ecran sans souris : rien a piloter
+  var doux = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var parti = false;
+  function leave(e) {
+    if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button)) return;
+    if (e) e.preventDefault();
+    if (parti) return;
+    // l'accueil saura qu'on revient du plan, et remettra le mot en place
+    try { sessionStorage.setItem("sudv11.retour", "1"); } catch (err) {}
+    if (doux) { location.href = exit.href; return; }
+    document.body.classList.add("leaving");
+    function go() { if (!parti) { parti = true; location.href = exit.href; } }
+    document.getElementById("plan").addEventListener("animationend", go, { once: true });
+    setTimeout(go, 900);
+  }
+  exit.addEventListener("click", leave);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") leave(null);
+  });
+})();
+</script>
+
+<script>
+/* =========================================================================
+   SUDV11 — plan d'images
+   Rendu WebGL2, une seule passe instanciée : toutes les bulles en 1 draw call.
+   La silhouette se déforme dans le fragment shader (SDF), la photo à
+   l'intérieur n'est jamais déformée : on découpe, on n'étire pas.
+   ========================================================================= */
+
+/* ---- réglages ------------------------------------------------------- */
+const CFG = {
+  // taille
+  R0:        46,     // rayon de base d'une bulle, en unités monde
+  VARIATION: 0.14,   // variation aléatoire du rayon de base (0 = toutes égales)
+  Y:         0.35,   // GAIN PAR CLIC, en unités monde : t_repos = t0 + Y * c
+                     // 0.35 px sur un rayon de 46 = +0,76 % par clic : imperceptible
+                     // d'un clic à l'autre, lisible seulement sur la durée
+  RMAX:      2.6,    // garde-fou : rayon max en multiples de R0 (mets 99 pour l'enlever)
+  BOOST:     0.60,   // gonflement ajouté par clic — de quoi vraiment voir la photo
+  BOOST_MAX: 4.00,   // gonflement transitoire maximum (x5 le rayon au repos)
+  GROW:      18,     // vitesse d'inflation : assez vive pour claquer, assez douce
+                     // pour que la foule soit repoussée au lieu d'être traversée
+  TAU:       0.35,   // secondes — constante de dégonflement quand la souris sort
+
+  // milieu
+  DENSITY:   0.34,   // taux d'occupation du plan (détermine sa taille)
+  DRIFT:     14,     // vitesse de dérive, px/s
+  DRIFT_LERP:0.045,   // à quel point la dérive reprend le dessus sur les chocs
+  SEP:       0.16,   // fermeté de la séparation : bas = les corps s'interpénètrent
+                     // un instant et se dégagent en s'écoulant, au lieu de claquer
+  BOUNCE:    0.03,   // restitution entre corps libres — un liquide ne rebondit pas
+  VISC:      0.16,   // viscosité : dissipation de la vitesse relative au contact
+  VISC_GRAB: 0.035,  // viscosité contre la bulle tenue : très basse, sinon les
+                     // voisines prennent sa vitesse et la suivent comme un sillage
+
+  // rendu
+  SQUASH:    0.13,   // épousement des silhouettes
+  DIM:       0.80,   // assombrissement des autres bulles pendant un survol
+  LIFT_IN:   14,     // vitesse d'apparition du détachement
+  LIFT_OUT:  7,      // vitesse de retour
+
+  GRAB_BOUNCE: 0.10, // restitution contre la bulle tenue : elle écarte, mais la
+                     // foule ne l'avale plus tout à fait sans réagir
+
+  // Un lancer, lui, doit se sentir : le temps de sa course (FLING) la bulle
+  // et tout ce qu'elle percute passent en régime dur — ça rebondit, ça se
+  // sépare franchement, et l'énergie n'est plus bue par la viscosité.
+  FLING_BOUNCE: 0.45, // restitution d'un contact impliquant une bulle lancée
+  FLING_VISC: 0.04,  // viscosité pendant ce contact : presque nulle
+  FLING_SEP:  0.55,  // fermeté de la séparation pendant ce contact
+
+  GRAB_VMAX: 55,    // px/s — vitesse d'approche maximale prise en compte au contact
+                     // d'une bulle tenue : un geste rapide écarte, il ne catapulte pas
+  CLICK_SLOP: 9,     // px de tolérance : en dessous c'est un clic, au-dessus un lancer
+  THROW:     1.15,   // restitution de l'élan du curseur au lâcher
+  THROW_MAX: 2600,   // vitesse maximale d'un lancer, px/s
+  FLING:     1.6,    // secondes pendant lesquelles un lancer résiste au courant
+
+  // liens
+  LINK_TIME: 3.0,    // secondes de contact maintenu pour sceller un lien
+  LINK_GAP:  20,     // px entre bords pour ACCROCHER une voisine : il faut
+                     // vraiment presser l'une contre l'autre, pas passer à côté
+  LINK_KEEP: 46,     // px au-delà desquels on la LÂCHE (hystérésis) : presser une
+                     // bulle contre une autre l'écarte, il faut de la marge
+  LINK_FALL: 1.2,    // retombee du col si on s'ecarte ou change de voisine
+  LINK_SNAP: 3.0,    // retrait du col une fois la connexion scellee
+  LINK_MIN:  0.16,   // épaisseur du col au poids le plus faible (fraction du rayon)
+  LINK_MAX:  0.92,   // épaisseur du col au poids le plus fort
+  LINK_PULL: 9,      // attraction par unité de poids, px/s²
+  LINK_SUCK: 2.2,    // vitesse a laquelle la voisine vient se loger : elle
+                     // s'approche, elle ne se jette pas
+  LINK_NEST: 0.28,   // profondeur d'emboitement, en fraction du plus petit rayon
+  LINK_MELD: 1.00,   // a lien plein, la paire ne se repousse plus du tout
+  LINK_REF:  3,      // plancher de n_max : le premier lien n'est pas d'emblée au max
+
+  // Le coin des dernieres arrivees : elles se posent ensemble dans l'angle en
+  // bas a gauche, les autres partout ailleurs. Rien ne marque la frontiere
+  // sinon le vide entre les deux — c'est le groupement qui la dit.
+  NUIT_R:    0.40,   // rayon du quart de disque, depuis le coin. Choisi pour
+                     // que les nouvelles y tiennent a la densite du reste
+  NUIT_MARGE:1.09,   // ce que les autres laissent en plus : la couture se voit
+
+  ZOOM_MIN:  0.35,
+  ZOOM_MAX:  3.0,
+};
+
+// Adresse du Worker : le plan est commun a tous les visiteurs. L'etat fait foi
+// cote serveur ; le stockage local ne sert plus que de repli quand le Worker
+// est injoignable, et se fait ecraser des qu'il repond.
+//
+// Le sous-domaine est celui du compte Cloudflare (le meme que le Worker du
+// live), le nom vient de worker/wrangler.toml. A verifier apres le premier
+// `npx wrangler deploy` : tant que le Worker n'existe pas, la requete echoue
+// silencieusement et le plan retombe en local — rien ne casse.
+//
+// Vide -> le plan redevient solitaire, dans ce navigateur seulement.
+const API = "https://sudv11-plan.guerreiromathis.workers.dev";
+
+// Outils de mise au point : masques par defaut, actives par ?reglages dans
+// l'URL. Rien de tout ca n'existe pour un visiteur — ni le panneau, ni le
+// bouton de remise a zero, ni la sonde de console.
+const DEV = new URLSearchParams(location.search).has("reglages");
+
+// v2 : l'arrivee des dernieres images a decale les index, les clics et les
+// liens de la v1 ne designent plus les memes photos — on repart proprement.
+const STORE  = "sudv11.plan.clicks.v2";
+const STOREL = "sudv11.plan.links.v2";
+const STOREM = "sudv11.plan.mine.v2";
+const STORES = "sudv11.plan.sid.v1";
+
+// Session anonyme : elle ne dit pas QUI, seulement « le meme onglet ».
+// Sert uniquement a ce qu'une personne ne compte qu'une fois par paire.
+function sessionId(){
+  try {
+    let v = localStorage.getItem(STORES);
+    if (!v) { v = crypto.randomUUID().replace(/-/g, ""); localStorage.setItem(STORES, v); }
+    return v;
+  } catch (e) { return crypto.randomUUID().replace(/-/g, ""); }
+}
+const SID = sessionId();
+
+/* ---- shaders --------------------------------------------------------- */
+
+const VS = `#version 300 es
+in vec2  a_quad;
+in vec2  a_center;
+in float a_radius;
+in vec2  a_uv;
+in float a_lift;
+in vec3  a_c1;
+in vec3  a_c2;
+uniform vec2  u_res;
+uniform vec2  u_cam;
+uniform float u_zoom;
+out vec2  v_p;
+out vec2  v_uv0;
+out float v_lift;
+out vec3  v_c1;
+out vec3  v_c2;
+out float v_px;
+void main(){
+  v_p = a_quad; v_uv0 = a_uv; v_lift = a_lift; v_c1 = a_c1; v_c2 = a_c2;
+  v_px = a_radius * u_zoom;
+  vec2 s = (a_center + a_quad * a_radius - u_cam) * u_zoom;
+  gl_Position = vec4(s.x / u_res.x * 2.0 - 1.0, 1.0 - s.y / u_res.y * 2.0, 0.0, 1.0);
+}`;
+
+const FS = `#version 300 es
+precision highp float;
+in vec2  v_p;
+in vec2  v_uv0;
+in float v_lift;
+in vec3  v_c1;
+in vec3  v_c2;
+in float v_px;
+uniform sampler2D u_atlas;
+uniform float u_cell;    // côté d'une cellule d'atlas, en UV
+uniform float u_inset;   // marge anti-bavure entre cellules
+uniform float u_squash;
+uniform float u_dim;
+out vec4 o;
+
+// un contact pousse la silhouette vers l'intérieur, localement
+float pushed(vec2 n, vec3 c){
+  float d = max(0.0, dot(n, c.xy));
+  return c.z * d * d * d;      // exposant 3 : un meplat large, pas une entaille
+}
+
+void main(){
+  float d = length(v_p);
+  if (d > 1.0) discard;
+  vec2 n = v_p / max(d, 1e-4);
+
+  float r = 1.0 - u_squash * (pushed(n, v_c1) + pushed(n, v_c2));
+  float e = max(1.4 / max(v_px, 1.0), 0.003);
+  float a = smoothstep(r, r - e, d);
+  if (a <= 0.002) discard;
+
+  // la photo est échantillonnée sur le carré non déformé : on découpe, on n'étire pas
+  vec2 uv = v_uv0 + u_inset + (v_p * 0.5 + 0.5) * (u_cell - 2.0 * u_inset);
+  vec3 col = texture(u_atlas, uv).rgb;
+
+  col *= mix(u_dim, 1.0, v_lift);
+  col  = mix(col, col * 1.05 + 0.015, v_lift);
+
+  float ring = smoothstep(r - e, r - e - 0.018, d);
+  col = mix(vec3(0.04), col, mix(1.0, ring, v_lift));
+
+  o = vec4(col, a);
+}`;
+
+/* ---- le col liquide entre deux bulles -------------------------------
+   Metaball : union lissee des deux disques. Le parametre k du lissage EST
+   l'epaisseur du col, donc l'animation de connexion se reduit a faire
+   monter k — la meme mathematique que deux gouttes qui fusionnent.      */
+const VSL = `#version 300 es
+in vec2 a_quad;
+in vec4 a_ab;
+in vec3 a_r;
+uniform vec2 u_res; uniform vec2 u_cam; uniform float u_zoom;
+out vec2 v_w; out vec4 v_ab; out vec3 v_r;
+void main(){
+  vec2 c = (a_ab.xy + a_ab.zw) * 0.5;
+  float h = distance(a_ab.xy, a_ab.zw) * 0.5 + max(a_r.x, a_r.y) + a_r.z + 6.0;
+  vec2 w = c + a_quad * h;
+  v_w = w; v_ab = a_ab; v_r = a_r;
+  vec2 s = (w - u_cam) * u_zoom;
+  gl_Position = vec4(s.x / u_res.x * 2.0 - 1.0, 1.0 - s.y / u_res.y * 2.0, 0.0, 1.0);
+}`;
+
+const FSL = `#version 300 es
+precision highp float;
+in vec2 v_w; in vec4 v_ab; in vec3 v_r;
+uniform float u_zoom;
+out vec4 o;
+float smin(float a, float b, float k){
+  if (k <= 0.0001) return min(a, b);
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+void main(){
+  float l1 = distance(v_w, v_ab.xy), l2 = distance(v_w, v_ab.zw);
+  // Le debordement de l'union lissee n'existe que la ou les deux distances
+  // sont proches : c'est le menisque au raccord, et il fait tout le charme.
+  // Son ampleur se regle par k, pas en rognant les rayons.
+  float d = smin(l1 - v_r.x, l2 - v_r.y, v_r.z);
+  float e = max(1.2 / u_zoom, 0.4);
+  float a = smoothstep(0.0, -e, d);
+  if (a <= 0.004) discard;
+  o = vec4(0.0, 0.0, 0.0, a);        // le col est noir
+}`;
+
+/* ---- utilitaires WebGL ---------------------------------------------- */
+function compile(gl, type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function program(gl, vs, fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+/* ---- démarrage ------------------------------------------------------- */
+const cv = document.getElementById("plan");
+const boot = document.getElementById("boot");
+const hN = document.getElementById("hN"), hC = document.getElementById("hC");
+const hL = document.getElementById("hL");
+
+(async function main(){
+  if (SANS_SOURIS) return;                 // ni atlas, ni WebGL, ni requetes
+  const meta = await fetch("assets/atlas.json").then(r => r.json());
+  const img = await new Promise((ok, ko) => {
+    const im = new Image();
+    im.onload = () => ok(im); im.onerror = ko;
+    im.src = "assets/atlas_0.jpg";
+  });
+
+  const gl = cv.getContext("webgl2", { antialias: false, alpha: false, premultipliedAlpha: false });
+  if (!gl) { boot.textContent = "WebGL2 indisponible"; return; }
+
+  const N = meta.images.length;
+  hN.textContent = N;
+
+  /* --- état des bulles --- */
+  const px = new Float32Array(N), py = new Float32Array(N);
+  const vx = new Float32Array(N), vy = new Float32Array(N);
+  const base = new Float32Array(N);          // rayon de base t0, avec variation
+  const rad  = new Float32Array(N);          // rayon affiché
+  const boost = new Float32Array(N);
+  const lift = new Float32Array(N);
+  const hoverTime = new Float32Array(N);
+  const deg = new Float32Array(N);          // nombre de liens par bulle
+  const links = new Map();                  // "a:b" -> n (nombre de PERSONNES)
+  let linkList = [];                        // [a, b, n, poids] a plat, reconstruit a chaque MAJ
+  let nMax = CFG.LINK_REF;
+  let partner = -1, lprog = 0, sealed = false, flash = 0, linked = false;
+  const mine = new Set();                   // paires deja scellees par CETTE session
+  const radTarget = new Float32Array(N);
+  const flingT = new Float32Array(N);
+  const ph1 = new Float32Array(N), ph2 = new Float32Array(N);
+  const w1 = new Float32Array(N), w2 = new Float32Array(N);
+  let clicks = new Int32Array(N);
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE) || "null");
+    if (Array.isArray(saved) && saved.length === N) clicks = Int32Array.from(saved);
+  } catch (e) {}
+
+  try {
+    const L = JSON.parse(localStorage.getItem(STOREL) || "null");
+    if (L) for (const k in L) links.set(k, L[k]);
+    const M = JSON.parse(localStorage.getItem(STOREM) || "null");
+    if (Array.isArray(M)) M.forEach(k => mine.add(k));
+  } catch (e) {}
+
+  // Poids d'un lien : logarithmique, relatif au plus gros lien du plan.
+  // C'est en bas de l'echelle que l'ecart doit se lire (1 contre 2 autant
+  // que 10 contre 20), d'ou le log ; et n_max a un plancher pour que le
+  // tout premier lien ne soit pas d'emblee au maximum.
+  function rebuildLinks(){
+    nMax = CFG.LINK_REF;
+    for (const n of links.values()) if (n > nMax) nMax = n;
+    const den = Math.log(1 + nMax);
+    linkList = [];
+    deg.fill(0);
+    for (const [k, n] of links){
+      const c = k.indexOf(":");
+      const a = +k.slice(0, c), b = +k.slice(c + 1);
+      if (a >= N || b >= N) continue;
+      linkList.push(a, b, n, Math.log(1 + n) / den);
+      deg[a]++; deg[b]++;
+    }
+  }
+
+  /* ---- serveur ------------------------------------------------------
+     Sans API : tout reste dans ce navigateur. Avec API : le serveur fait
+     foi, les clics partent par lots et l'etat revient en direct par
+     WebSocket, si bien qu'on voit grossir les images que quelqu'un
+     d'autre est en train de regarder.                                  */
+  let pending = {};            // clics pas encore envoyes
+  let flushT = 0;
+
+  function post(path, body){
+    if (!API) return Promise.resolve(null);
+    return fetch(API + path, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body), keepalive: true,
+    }).then(r => r.ok ? r.json() : null).catch(() => null);
+  }
+
+  function flush(){
+    if (!API) return;
+    const batch = pending; pending = {};
+    if (Object.keys(batch).length) post("/click", { batch });
+  }
+
+  function pushClick(i){
+    if (!API) return;
+    pending[i] = (pending[i] || 0) + 1;
+    clearTimeout(flushT);
+    flushT = setTimeout(flush, 1500);
+  }
+
+  // l'etat du serveur fait foi : on ecrase le notre
+  function applyState(st){
+    if (!st) return;
+    const c = new Int32Array(N);
+    for (const k in st.clicks){ const i = +k; if (i >= 0 && i < N) c[i] = st.clicks[k]; }
+    // on n'efface pas les clics encore en vol
+    for (const k in pending) c[+k] += pending[k];
+    clicks = c;
+    links.clear();
+    for (const k in st.links) links.set(k, st.links[k]);
+    rebuildLinks();
+  }
+
+  function connect(){
+    if (!API) return;
+    fetch(API + "/state", { cache: "no-store" })
+      .then(r => r.json()).then(applyState).catch(() => {});
+    try {
+      const ws = new WebSocket(API.replace(/^http/, "ws") + "/ws");
+      ws.onmessage = e => { try { applyState(JSON.parse(e.data)); } catch (err) {} };
+      ws.onclose = () => setTimeout(connect, 4000);
+    } catch (e) {}
+  }
+
+  addEventListener("pagehide", flush);
+  addEventListener("visibilitychange", () => { if (document.hidden) flush(); });
+
+  let saveL = 0;
+  function saveLinks(){
+    rebuildLinks();
+    clearTimeout(saveL);
+    saveL = setTimeout(() => {
+      try {
+        localStorage.setItem(STOREL, JSON.stringify(Object.fromEntries(links)));
+        localStorage.setItem(STOREM, JSON.stringify(Array.from(mine)));
+      } catch (e) {}
+    }, 400);
+  }
+
+  function seal(a, b){
+    const k = a < b ? a + ":" + b : b + ":" + a;
+    if (!mine.has(k)){                       // une session ne compte qu'une fois
+      links.set(k, (links.get(k) || 0) + 1);
+      mine.add(k);
+      saveLinks();
+      post("/link", { a: Math.min(a, b), b: Math.max(a, b), sid: SID })
+        .then(st => { if (st) applyState(st); });
+    }
+    flash = 1;
+  }
+
+  // le plan est plus large que l'écran : sa taille découle du taux d'occupation
+  let area = 0;
+  for (let i = 0; i < N; i++){
+    base[i] = CFG.R0 * (1 + (Math.random() * 2 - 1) * CFG.VARIATION);
+    area += Math.PI * base[i] * base[i];
+    ph1[i] = Math.random() * 6.283; ph2[i] = Math.random() * 6.283;
+    w1[i] = 0.05 + Math.random() * 0.12; w2[i] = 0.05 + Math.random() * 0.12;
+  }
+  const WORLD = Math.round(Math.sqrt(area / CFG.DENSITY));
+
+  // taille au repos : t0 + Y·c — additif, un incrément constant par clic
+  const restRadius = i => Math.min(base[i] + CFG.Y * clicks[i], CFG.R0 * CFG.RMAX);
+
+  // Les dernieres arrivees se posent ensemble dans l'angle en bas a gauche,
+  // les autres tiennent le reste du plan. Le rayon est calcule pour qu'elles y
+  // soient a la meme densite qu'ailleurs : c'est un quartier, pas un tas.
+  // Rien ne les y retient ensuite — la derive fera le melange qu'elle voudra.
+  {
+    const rN = WORLD * CFG.NUIT_R, rHors = rN * CFG.NUIT_MARGE;
+    const coin = (x, y) => Math.hypot(x, WORLD - y);   // distance a l'angle
+    for (let i = 0; i < N; i++){
+      const r = restRadius(i);
+      if (meta.images[i].nuit){
+        // racine carree : un quart de disque uniforme, sans entassement au coin
+        const a = Math.random() * 1.5708, u = Math.sqrt(Math.random()) * rN;
+        px[i] = Math.cos(a) * u;
+        py[i] = WORLD - Math.sin(a) * u;
+      } else {
+        let k = 0;
+        do {
+          px[i] = 40 + Math.random() * (WORLD - 80);
+          py[i] = 40 + Math.random() * (WORLD - 80);
+        } while (++k < 24 && coin(px[i], py[i]) < rHors);
+      }
+      px[i] = Math.min(WORLD - r, Math.max(r, px[i]));
+      py[i] = Math.min(WORLD - r, Math.max(r, py[i]));
+      rad[i] = radTarget[i] = r;
+    }
+  }
+  rebuildLinks();
+
+  /* --- grille de voisinage --- */
+  let CELL = 0, GW = 0, head = null, next = new Int32Array(N);
+  function grid(){
+    let maxR = 0;
+    for (let i = 0; i < N; i++) if (rad[i] > maxR) maxR = rad[i];
+    CELL = Math.max(2 * maxR, 1);
+    GW = Math.max(1, Math.ceil(WORLD / CELL));
+    if (!head || head.length !== GW * GW) head = new Int32Array(GW * GW);
+    head.fill(-1);
+    for (let i = 0; i < N; i++){
+      const cx = Math.min(GW - 1, Math.max(0, (px[i] / CELL) | 0));
+      const cy = Math.min(GW - 1, Math.max(0, (py[i] / CELL) | 0));
+      const c = cy * GW + cx;
+      next[i] = head[c]; head[c] = i;
+    }
+  }
+
+  // contacts retenus pour la déformation : les deux plus profonds par bulle
+  const c1 = new Float32Array(N * 3), c2 = new Float32Array(N * 3);
+
+  function contact(i, nx, ny, s){
+    if (s > c1[i*3+2]) {
+      c2[i*3] = c1[i*3]; c2[i*3+1] = c1[i*3+1]; c2[i*3+2] = c1[i*3+2];
+      c1[i*3] = nx; c1[i*3+1] = ny; c1[i*3+2] = s;
+    } else if (s > c2[i*3+2]) {
+      c2[i*3] = nx; c2[i*3+1] = ny; c2[i*3+2] = s;
+    }
+  }
+
+  function collide(separateOnly){
+    c1.fill(0); c2.fill(0);
+    grid();
+    for (let cy = 0; cy < GW; cy++){
+      for (let cx = 0; cx < GW; cx++){
+        for (let i = head[cy*GW+cx]; i !== -1; i = next[i]){
+          for (let oy = 0; oy <= 1; oy++){
+            for (let ox = (oy === 0 ? 0 : -1); ox <= 1; ox++){
+              const nx2 = cx + ox, ny2 = cy + oy;
+              if (nx2 < 0 || nx2 >= GW || ny2 >= GW) continue;
+              let j = (ox === 0 && oy === 0) ? next[i] : head[ny2*GW+nx2];
+              for (; j !== -1; j = next[j]){
+                const dx = px[j] - px[i], dy = py[j] - py[i];
+                const sum = rad[i] + rad[j];
+                const d2 = dx*dx + dy*dy;
+                if (d2 >= sum*sum || d2 === 0) continue;
+                const d = Math.sqrt(d2);
+                const nxn = dx / d, nyn = dy / d;
+                const ov = sum - d;
+
+                const fi = (i === frozen), fj = (j === frozen);
+                let wi = fi ? 0 : 1, wj = fj ? 0 : 1;
+                if (wi + wj === 0) { wi = wj = 0; } else if (wi + wj === 1) { wi *= 2; wj *= 2; }
+
+                // pendant la formation d'un lien, la paire cesse de se repousser
+                // et s'enfonce l'une dans l'autre : deux cellules qui fusionnent.
+                // L'ecrasement des silhouettes suit tout seul, puisqu'il est
+                // calcule a partir du chevauchement.
+                const pair = (i === grab && j === partner) || (j === grab && i === partner);
+                // une bulle encore lancée percute au lieu de s'infiltrer
+                const fling = flingT[i] > 0 || flingT[j] > 0;
+                const sepK = pair ? CFG.SEP * (1 - CFG.LINK_MELD * lprog)
+                           : (fling ? CFG.FLING_SEP : CFG.SEP);
+                const push = ov * 0.5 * sepK;
+                px[i] -= nxn * push * wi; py[i] -= nyn * push * wi;
+                px[j] += nxn * push * wj; py[j] += nyn * push * wj;
+
+                if (!separateOnly){
+                  const held = (i === grab || j === grab);
+                  const ii = fi ? 0 : 1, ij = fj ? 0 : 1;
+
+                  // La vitesse du curseur ne se transmet jamais telle quelle :
+                  // on la borne AVANT tout calcul de contact.
+                  let vix = vx[i], viy = vy[i], vjx = vx[j], vjy = vy[j];
+                  if (held){
+                    const cap = CFG.GRAB_VMAX;
+                    if (i === grab){ const sp = Math.hypot(vix, viy);
+                      if (sp > cap){ vix *= cap/sp; viy *= cap/sp; } }
+                    if (j === grab){ const sp = Math.hypot(vjx, vjy);
+                      if (sp > cap){ vjx *= cap/sp; vjy *= cap/sp; } }
+                  }
+
+                  const rvx = vjx - vix, rvy = vjy - viy;
+                  const vn = rvx * nxn + rvy * nyn;
+
+                  // 1. rebond élastique : réduit à presque rien, un liquide ne rebondit pas
+                  if (vn < 0){
+                    const e = held ? CFG.GRAB_BOUNCE : (fling ? CFG.FLING_BOUNCE : CFG.BOUNCE);
+                    const imp = -(1 + e) * vn * 0.5;
+                    vx[i] -= nxn * imp * ii; vy[i] -= nyn * imp * ii;
+                    vx[j] += nxn * imp * ij; vy[j] += nyn * imp * ij;
+                  }
+
+                  // 2. viscosité : les corps en contact convergent vers leur vitesse
+                  // moyenne, normale ET tangentielle. C'est ce terme qui fait le liquide :
+                  // l'énergie se dissipe dans le contact au lieu d'être renvoyée.
+                  const k = 0.5 * (held ? CFG.VISC_GRAB
+                                        : (fling ? CFG.FLING_VISC : CFG.VISC));
+                  vx[i] += rvx * k * ii; vy[i] += rvy * k * ii;
+                  vx[j] -= rvx * k * ij; vy[j] -= rvy * k * ij;
+                  contact(i, -nxn, -nyn, Math.min(1, ov / rad[i]));
+                  contact(j,  nxn,  nyn, Math.min(1, ov / rad[j]));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // détassement initial : on écarte avant la première image
+  let frozen = -1, grab = -1;
+  const sep0 = CFG.SEP; CFG.SEP = 0.8;      // écartement ferme pour la mise en place
+  for (let k = 0; k < 140; k++){
+    collide(true);
+    for (let i = 0; i < N; i++){
+      px[i] = Math.min(WORLD - rad[i], Math.max(rad[i], px[i]));
+      py[i] = Math.min(WORLD - rad[i], Math.max(rad[i], py[i]));
+    }
+  }
+  CFG.SEP = sep0;
+
+  /* --- caméra --- */
+  const cam = { x: WORLD/2, y: WORLD/2, zoom: 1 };
+  let W = 0, H = 0, DPR = 1;
+  function resize(){
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    gl.viewport(0, 0, cv.width, cv.height);
+    clampCam();
+  }
+  function clampCam(){
+    const vw = W / cam.zoom, vh = H / cam.zoom;
+    const mx = Math.max(0, (WORLD - vw) / 2), my = Math.max(0, (WORLD - vh) / 2);
+    cam.x = Math.min(WORLD/2 + mx, Math.max(WORLD/2 - mx, cam.x));
+    cam.y = Math.min(WORLD/2 + my, Math.max(WORLD/2 - my, cam.y));
+  }
+  const toWorld = (sx, sy) => [cam.x - W/(2*cam.zoom) + sx/cam.zoom,
+                               cam.y - H/(2*cam.zoom) + sy/cam.zoom];
+
+  /* --- géométrie GPU --- */
+  const prog = program(gl, VS, FS);
+  gl.useProgram(prog);
+  const loc = n => gl.getAttribLocation(prog, n);
+  const uni = n => gl.getUniformLocation(prog, n);
+
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(loc("a_quad"));
+  gl.vertexAttribPointer(loc("a_quad"), 2, gl.FLOAT, false, 0, 0);
+
+  // un seul tampon entrelacé : center(2) radius(1) uv(2) lift(1) c1(3) c2(3) = 12 floats
+  const STRIDE = 12;
+  const inst = new Float32Array(N * STRIDE);
+  const ibuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, ibuf);
+  gl.bufferData(gl.ARRAY_BUFFER, inst.byteLength, gl.DYNAMIC_DRAW);
+  const B = STRIDE * 4;
+  const attr = (name, size, off) => {
+    const l = loc(name);
+    gl.enableVertexAttribArray(l);
+    gl.vertexAttribPointer(l, size, gl.FLOAT, false, B, off * 4);
+    gl.vertexAttribDivisor(l, 1);
+  };
+  attr("a_center", 2, 0); attr("a_radius", 1, 2); attr("a_uv", 2, 3);
+  attr("a_lift", 1, 5);   attr("a_c1", 3, 6);     attr("a_c2", 3, 9);
+
+  /* --- passe des cols liquides --- */
+  const progL = program(gl, VSL, FSL);
+  const locL = n => gl.getAttribLocation(progL, n);
+  const uniL = n => gl.getUniformLocation(progL, n);
+  const vaoL = gl.createVertexArray();
+  gl.bindVertexArray(vaoL);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.enableVertexAttribArray(locL("a_quad"));
+  gl.vertexAttribPointer(locL("a_quad"), 2, gl.FLOAT, false, 0, 0);
+
+  const LS = 7;                        // ab(4) r(3)
+  const MAXL = 4096;
+  const linst = new Float32Array(MAXL * LS);
+  const lbuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, lbuf);
+  gl.bufferData(gl.ARRAY_BUFFER, linst.byteLength, gl.DYNAMIC_DRAW);
+  const attrL = (name, size, off) => {
+    const l = locL(name);
+    gl.enableVertexAttribArray(l);
+    gl.vertexAttribPointer(l, size, gl.FLOAT, false, LS * 4, off * 4);
+    gl.vertexAttribDivisor(l, 1);
+  };
+  attrL("a_ab", 4, 0); attrL("a_r", 3, 4);
+  gl.bindVertexArray(vao);
+
+  // atlas
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  const CELLUV = meta.cell / meta.atlas;
+  gl.uniform1i(uni("u_atlas"), 0);
+  gl.uniform1f(uni("u_cell"), CELLUV);
+  gl.uniform1f(uni("u_inset"), 0.75 / meta.atlas);
+  gl.uniform1f(uni("u_squash"), CFG.SQUASH);
+
+  gl.enable(gl.BLEND);
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  // le fond du canvas suit la variable CSS, pour n'avoir qu'un seul reglage
+  const bgHex = getComputedStyle(document.documentElement)
+                  .getPropertyValue("--plan-bg").trim().replace("#", "");
+  const bgN = parseInt(bgHex.length === 3
+    ? bgHex.split("").map(c => c + c).join("") : bgHex, 16);
+  gl.clearColor(((bgN >> 16) & 255) / 255, ((bgN >> 8) & 255) / 255, (bgN & 255) / 255, 1);
+
+  /* --- interaction --- */
+  let mx = -1, my = -1, hover = -1, dimTarget = 0, dim = 0;
+  let dragging = false, moved = 0, lastX = 0, lastY = 0, downOn = -1;
+  let startX = 0, startY = 0, panning = false;
+  let grabDX = 0, grabDY = 0, gpx = 0, gpy = 0;
+
+  function pick(sx, sy){
+    if (sx < 0) return -1;
+    const [wx, wy] = toWorld(sx, sy);
+    let best = -1, bd = Infinity;
+    const cx = Math.min(GW-1, Math.max(0, (wx / CELL) | 0));
+    const cy = Math.min(GW-1, Math.max(0, (wy / CELL) | 0));
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++){
+      const gx = cx + ox, gy = cy + oy;
+      if (gx < 0 || gy < 0 || gx >= GW || gy >= GW) continue;
+      for (let i = head[gy*GW+gx]; i !== -1; i = next[i]){
+        const dx = wx - px[i], dy = wy - py[i];
+        const d2 = dx*dx + dy*dy;
+        if (d2 < rad[i]*rad[i] && d2 < bd) { bd = d2; best = i; }
+      }
+    }
+    return best;
+  }
+
+  cv.addEventListener("pointermove", e => {
+    mx = e.clientX; my = e.clientY;
+    if (dragging){
+      moved = Math.hypot(e.clientX - startX, e.clientY - startY);
+      if (grab < 0 || panning){            // fond vide, ou majuscule enfoncée : on tire le plan
+        cam.x -= (e.clientX - lastX) / cam.zoom;
+        cam.y -= (e.clientY - lastY) / cam.zoom;
+        clampCam();
+      }
+      lastX = e.clientX; lastY = e.clientY;
+    }
+  });
+  cv.addEventListener("pointerleave", () => { mx = my = -1; });
+  cv.addEventListener("pointerdown", e => {
+    dragging = true; moved = 0;
+    lastX = startX = e.clientX; lastY = startY = e.clientY;
+    panning = e.shiftKey || e.button === 1;
+    linked = false;                        // nouvelle prise, nouveau droit de lier
+    downOn = panning ? -1 : pick(e.clientX, e.clientY);
+    if (downOn >= 0){                      // sur une bulle : on l'attrape
+      const w = toWorld(e.clientX, e.clientY);
+      grab = downOn; grabDX = px[grab] - w[0]; grabDY = py[grab] - w[1];
+      gpx = px[grab]; gpy = py[grab];
+      flingT[grab] = 0;
+    }
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    cv.classList.add("drag");
+  });
+  cv.addEventListener("pointerup", e => {
+    dragging = false; cv.classList.remove("drag");
+    if (moved < CFG.CLICK_SLOP && downOn >= 0){
+      clicks[downOn]++;
+      boost[downOn] = Math.min(CFG.BOOST_MAX, boost[downOn] + CFG.BOOST);
+      save();
+      pushClick(downOn);
+    } else if (grab >= 0){                 // lâcher : la bulle part avec l'élan du geste
+      let sp = Math.hypot(vx[grab], vy[grab]);
+      if (sp < 40){ vx[grab] = vy[grab] = 0; sp = 0; }   // posée, pas lancée
+      if (sp > CFG.THROW_MAX){ vx[grab] *= CFG.THROW_MAX / sp; vy[grab] *= CFG.THROW_MAX / sp; }
+      flingT[grab] = CFG.FLING;
+    }
+    grab = -1; downOn = -1; panning = false;
+  });
+  cv.addEventListener("wheel", e => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey){
+      const [wx, wy] = toWorld(e.clientX, e.clientY);
+      cam.zoom = Math.min(CFG.ZOOM_MAX, Math.max(CFG.ZOOM_MIN, cam.zoom * Math.exp(-e.deltaY * 0.01)));
+      const [ax, ay] = toWorld(e.clientX, e.clientY);
+      cam.x += wx - ax; cam.y += wy - ay;
+    } else {
+      cam.x += e.deltaX / cam.zoom; cam.y += e.deltaY / cam.zoom;
+    }
+    clampCam();
+  }, { passive: false });
+
+  let saveT = 0;
+  function save(){
+    clearTimeout(saveT);
+    saveT = setTimeout(() => {
+      try { localStorage.setItem(STORE, JSON.stringify(Array.from(clicks))); } catch (e) {}
+    }, 400);
+  }
+  const reset = document.getElementById("reset");
+  if (reset) reset.onclick = () => {
+    clicks.fill(0); boost.fill(0);
+    links.clear(); mine.clear(); rebuildLinks();
+    try { localStorage.removeItem(STORE); localStorage.removeItem(STOREL);
+          localStorage.removeItem(STOREM); } catch (e) {}
+  };
+
+  /* --- panneau de réglages (mode ?reglages uniquement) --- */
+  const panel = document.getElementById("panel");
+  if (!DEV) {
+    panel.remove();
+    const tools = document.querySelector(".tools");
+    if (tools) tools.remove();
+  }
+  if (DEV) {
+  document.getElementById("panelHead").onclick = () => {
+    panel.classList.toggle("closed");
+    document.getElementById("panelChev").textContent = panel.classList.contains("closed") ? "+" : "–";
+  };
+  function slider(id, key, fmt, onSet){
+    const s = document.getElementById("s" + id), v = document.getElementById("v" + id);
+    s.value = CFG[key];
+    const show = () => v.textContent = fmt(CFG[key]);
+    s.oninput = () => { CFG[key] = parseFloat(s.value); show(); if (onSet) onSet(); };
+    show();
+  }
+  const p1 = n => n.toFixed(1), p2 = n => n.toFixed(2);
+  slider("Y", "Y", n => "+" + n.toFixed(2) + " px · +" + (100*n/CFG.R0).toFixed(2) + "%");
+  slider("S", "SQUASH", p2, () => { gl.useProgram(prog); gl.uniform1f(uni("u_squash"), CFG.SQUASH); });
+  slider("D", "DRIFT", n => p1(n));
+  slider("T", "TAU", n => p2(n) + " s");
+  slider("B", "BOOST", p2);
+  slider("M", "DIM", p2);
+  slider("X", "BOOST_MAX", n => "x" + (1 + n).toFixed(1));
+  slider("L", "THROW", p2);
+  slider("P", "GRAB_VMAX", n => n.toFixed(0));
+  slider("R", "BOUNCE", p2);
+  slider("V", "VISC", p2);
+  slider("F", "SEP", p2);
+  slider("FB", "FLING_BOUNCE", p2);
+  slider("FS", "FLING_SEP", p2);
+  slider("T2", "LINK_TIME", n => n.toFixed(1) + " s");
+  slider("G", "LINK_GAP", n => n.toFixed(0) + " px", () => { CFG.LINK_KEEP = CFG.LINK_GAP * 2.3; });
+  slider("A", "LINK_PULL", n => n.toFixed(0));
+  slider("E", "LINK_NEST", p2);
+  }
+
+  /* --- boucle --- */
+  window.addEventListener("resize", resize); resize();
+  connect();
+  boot.classList.add("gone");
+
+  // sonde de console, en mode reglages uniquement
+  if (DEV) window.__dbg = () => ({ grab, hover, partner, lprog: +lprog.toFixed(2),
+                          sealed, links: links.size, N,
+                          gapToPartner: partner >= 0 && grab >= 0
+                            ? +(Math.hypot(px[partner]-px[grab], py[partner]-py[grab])
+                                - rad[partner] - rad[grab]).toFixed(1) : null });
+
+  let prev = performance.now(), acc = 0;
+  const STEP = 1 / 60;
+
+  function step(dt, t){
+    hover = grab >= 0 ? grab
+          : ((dragging && moved > CFG.CLICK_SLOP) ? -1 : pick(mx, my));
+    frozen = hover;
+    dimTarget = hover >= 0 ? CFG.DIM : 1;
+    if (hover >= 0) hoverTime[hover] += dt;
+
+    /* ---- lien : seulement entre la bulle tenue et celle qu'elle presse ----
+       Aucune bulle libre ne peut se lier a une autre : il faut une main. */
+    // une seule connexion par prise : une fois scellée, on garde la partenaire
+    // le temps que le col se rétracte, mais plus rien ne peut se lier
+    if (grab >= 0 && !linked){
+      const gapTo = j => Math.hypot(px[j] - px[grab], py[j] - py[grab])
+                          - rad[j] - rad[grab];
+      // hystérésis : on garde la voisine engagée tant qu'elle reste à portée,
+      // même si une autre passe plus près — sinon le lien saute sans arrêt
+      let best = (partner >= 0 && partner !== grab && gapTo(partner) < CFG.LINK_KEEP)
+               ? partner : -1;
+      if (best < 0){
+        let bg = CFG.LINK_GAP;
+        const gx = Math.min(GW-1, Math.max(0, (px[grab] / CELL) | 0));
+        const gy = Math.min(GW-1, Math.max(0, (py[grab] / CELL) | 0));
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++){
+          const ax = gx + ox, ay = gy + oy;
+          if (ax < 0 || ay < 0 || ax >= GW || ay >= GW) continue;
+          for (let j = head[ay*GW+ax]; j !== -1; j = next[j]){
+            if (j === grab) continue;
+            const gap = gapTo(j);
+            if (gap < bg){ bg = gap; best = j; }
+          }
+        }
+      }
+      if (best !== partner){ partner = best; lprog = 0; sealed = false; }
+      if (partner >= 0 && !sealed){
+        lprog += dt / CFG.LINK_TIME;
+        if (lprog >= 1){ lprog = 1; sealed = true; linked = true; seal(grab, partner); }
+
+        // La paire s'appelle : la voisine vient se loger contre la bulle tenue et
+        // s'y enfonce, de plus en plus profond a mesure que le lien monte. C'est
+        // ce chevauchement qui nourrit l'ecrasement des silhouettes — les deux
+        // cellules s'epousent au lieu de se toucher du bout.
+        const dx = px[grab] - px[partner], dy = py[grab] - py[partner];
+        const d = Math.hypot(dx, dy) || 1;
+        const nest = CFG.LINK_NEST * Math.min(rad[grab], rad[partner]) * lprog;
+        const want = rad[grab] + rad[partner] - nest;
+        const corr = (d - want) * Math.min(1, CFG.LINK_SUCK * dt);
+        px[partner] += dx / d * corr; py[partner] += dy / d * corr;
+      }
+    } else if (grab < 0 && partner >= 0){ partner = -1; sealed = false; }
+
+    // Une fois scelle, le col se retracte et se pince : l'animation dit que
+    // quelque chose est passe entre les deux, puis il ne reste plus rien
+    // de visible — seulement le poids.
+    if (sealed && lprog > 0) lprog = Math.max(0, lprog - dt * CFG.LINK_SNAP);
+    else if (partner < 0 && lprog > 0) lprog = Math.max(0, lprog - dt * CFG.LINK_FALL);
+    if (flash > 0) flash = Math.max(0, flash - dt * 2.5);
+
+    // attraction des liens : les paires connectees se rapprochent, avec un
+    // budget constant par bulle — sinon une image tres liee devient un puits
+    for (let L = 0; L < linkList.length; L += 4){
+      const a = linkList[L], b = linkList[L+1], w = linkList[L+3];
+      const dx = px[b] - px[a], dy = py[b] - py[a];
+      const d = Math.hypot(dx, dy), rest = rad[a] + rad[b];
+      if (d <= rest || d === 0) continue;
+      const nx = dx / d, ny = dy / d;
+      const fa = CFG.LINK_PULL * w / Math.max(1, deg[a]) * dt;
+      const fb = CFG.LINK_PULL * w / Math.max(1, deg[b]) * dt;
+      if (a !== frozen){ vx[a] += nx * fa; vy[a] += ny * fa; }
+      if (b !== frozen){ vx[b] -= nx * fb; vy[b] -= ny * fb; }
+    }
+
+    // la bulle tenue suit le curseur ; sa vitesse est celle du geste
+    if (grab >= 0){
+      const w = toWorld(mx, my);
+      const tx = w[0] + grabDX, ty = w[1] + grabDY;
+      vx[grab] = (tx - gpx) / dt * CFG.THROW;
+      vy[grab] = (ty - gpy) / dt * CFG.THROW;
+      px[grab] = gpx = tx; py[grab] = gpy = ty;
+    }
+
+    for (let i = 0; i < N; i++){
+      if (i === frozen){
+        if (i !== grab) { vx[i] = vy[i] = 0; }     // figée par le survol seul
+      } else {
+        if (flingT[i] > 0) flingT[i] -= dt;
+        // un lancer résiste au courant le temps de traverser la foule
+        const lerp = flingT[i] > 0 ? CFG.DRIFT_LERP * 0.22 : CFG.DRIFT_LERP;
+        const dxv = Math.cos(t * w1[i] + ph1[i]) * CFG.DRIFT;
+        const dyv = Math.sin(t * w2[i] + ph2[i]) * CFG.DRIFT;
+        vx[i] += (dxv - vx[i]) * lerp;
+        vy[i] += (dyv - vy[i]) * lerp;
+        px[i] += vx[i] * dt;
+        py[i] += vy[i] * dt;
+      }
+
+      // gonflement : il tient sous la souris, il retombe dès qu'elle sort
+      if (i !== hover && boost[i] > 0){
+        boost[i] *= Math.exp(-dt / CFG.TAU);
+        if (boost[i] < 0.0015) boost[i] = 0;
+      }
+      radTarget[i] = restRadius(i) * (1 + boost[i]);
+      rad[i] += (radTarget[i] - rad[i]) * Math.min(1, CFG.GROW * dt);
+
+      const target = (i === hover) ? 1 : 0;
+      const k = target > lift[i] ? CFG.LIFT_IN : CFG.LIFT_OUT;
+      lift[i] += (target - lift[i]) * Math.min(1, k * dt);
+    }
+
+    collide(false);
+
+    for (let i = 0; i < N; i++){
+      const r = rad[i];
+      if (px[i] < r){ px[i] = r; vx[i] = Math.abs(vx[i]); }
+      else if (px[i] > WORLD - r){ px[i] = WORLD - r; vx[i] = -Math.abs(vx[i]); }
+      if (py[i] < r){ py[i] = r; vy[i] = Math.abs(vy[i]); }
+      else if (py[i] > WORLD - r){ py[i] = WORLD - r; vy[i] = -Math.abs(vy[i]); }
+    }
+  }
+
+  let totalShown = -1, linkShown = -1;
+  function draw(){
+    dim += (dimTarget - dim) * 0.18;
+
+    const vw = W / cam.zoom, vh = H / cam.zoom;
+    const x0 = cam.x - vw/2, y0 = cam.y - vh/2;
+    let n = 0, top = -1;
+
+    for (let i = 0; i < N; i++){
+      const r = rad[i];
+      if (px[i] + r < x0 - 4 || px[i] - r > x0 + vw + 4 ||
+          py[i] + r < y0 - 4 || py[i] - r > y0 + vh + 4) continue;   // hors cadre
+      if (i === hover) { top = i; continue; }                        // dessinée en dernier
+      const o = n * STRIDE;
+      inst[o] = px[i]; inst[o+1] = py[i]; inst[o+2] = r;
+      inst[o+3] = meta.images[i].x * CELLUV; inst[o+4] = meta.images[i].y * CELLUV;
+      inst[o+5] = lift[i];
+      inst[o+6] = c1[i*3]; inst[o+7] = c1[i*3+1]; inst[o+8] = c1[i*3+2];
+      inst[o+9] = c2[i*3]; inst[o+10] = c2[i*3+1]; inst[o+11] = c2[i*3+2];
+      n++;
+    }
+    if (top >= 0){
+      const o = n * STRIDE, i = top;
+      inst[o] = px[i]; inst[o+1] = py[i]; inst[o+2] = rad[i];
+      inst[o+3] = meta.images[i].x * CELLUV; inst[o+4] = meta.images[i].y * CELLUV;
+      inst[o+5] = lift[i];
+      inst[o+6] = 0; inst[o+7] = 0; inst[o+8] = 0;
+      inst[o+9] = 0; inst[o+10] = 0; inst[o+11] = 0;   // la bulle survolée ne s'écrase pas
+      n++;
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, ibuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, inst, 0, n * STRIDE);
+
+    gl.useProgram(prog);
+    gl.uniform2f(uni("u_res"), W, H);
+    gl.uniform2f(uni("u_cam"), cam.x - vw/2, cam.y - vh/2);
+    gl.uniform1f(uni("u_zoom"), cam.zoom);
+    gl.uniform1f(uni("u_dim"), dim);
+
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // --- cols, dessines SOUS les bulles ---
+    let m = 0;
+    const put = (a, b, k) => {
+      if (m >= MAXL) return;
+      const o = m * LS;
+      linst[o] = px[a]; linst[o+1] = py[a]; linst[o+2] = px[b]; linst[o+3] = py[b];
+      linst[o+4] = rad[a]; linst[o+5] = rad[b]; linst[o+6] = k;
+      m++;
+    };
+    const neck = (a, b, w) => {
+      const k = (CFG.LINK_MIN + (CFG.LINK_MAX - CFG.LINK_MIN) * w) * Math.min(rad[a], rad[b]);
+      const gap = Math.hypot(px[b]-px[a], py[b]-py[a]) - rad[a] - rad[b];
+      if (gap > k * 2.6) return;          // trop loin : le col ne peut plus tenir
+      put(a, b, k);
+    };
+    if (grab >= 0 && partner >= 0 && lprog > 0.001){
+      // k monte avec le temps de contact, gonfle d'un coup au moment ou la
+      // connexion se scelle, puis se pince. Aucun col ne subsiste apres.
+      const e = lprog * lprog * (3 - 2 * lprog);
+      neck(grab, partner, Math.min(1.35, e + flash * 0.5));
+    }
+    if (m){
+      gl.useProgram(progL);
+      gl.bindVertexArray(vaoL);
+      gl.bindBuffer(gl.ARRAY_BUFFER, lbuf);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, linst, 0, m * LS);
+      gl.uniform2f(uniL("u_res"), W, H);
+      gl.uniform2f(uniL("u_cam"), cam.x - vw/2, cam.y - vh/2);
+      gl.uniform1f(uniL("u_zoom"), cam.zoom);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, m);
+    }
+
+    gl.useProgram(prog);
+    gl.bindVertexArray(vao);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+
+    cv.classList.toggle("over", hover >= 0);
+
+    let tot = 0; for (let i = 0; i < N; i++) tot += clicks[i];
+    if (tot !== totalShown){ totalShown = tot; hC.textContent = tot; }
+    if (links.size !== linkShown){ linkShown = links.size; hL.textContent = linkShown; }
+  }
+
+  function frame(now){
+    let dt = (now - prev) / 1000; prev = now;
+    if (dt > 0.25) dt = 0.25;
+    acc += dt;
+    let guard = 0;
+    while (acc >= STEP && guard++ < 5){ step(STEP, now / 1000); acc -= STEP; }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})().catch(e => { boot.textContent = "erreur : " + e.message; console.error(e); });
+</script>
+</body>
+</html>

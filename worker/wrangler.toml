@@ -1,0 +1,12 @@
+name = "sudv11-plan"
+main = "plan.js"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "PLAN"
+class_name = "Plan"
+
+# Le plan gratuit exige le stockage SQLite pour les Durable Objects
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Plan"]
