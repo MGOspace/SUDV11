@@ -266,12 +266,11 @@ body {
   text-decoration: none;
   cursor: pointer;
 
-  /* le plan dans les lettres */
-  background-image: url("../assets/title_plan.jpg");
-  background-size: cover;
-  background-position: center;
-  -webkit-background-clip: text;
-  background-clip: text;
+  /* Sans JS, le mot reste un mot : creux, tenu par son contour. C'est le
+     canvas qui met le plan dans les lettres, et lui seul. Y mettre aussi une
+     photo en fond coutait 444 Ko a chaque visite pour un repli que presque
+     personne ne voit — le navigateur la telechargeait meme quand le canvas
+     l'effacait aussitot. */
   color: transparent;
   -webkit-text-stroke: 2px var(--color-stroke);
   text-stroke: 2px var(--color-stroke);
@@ -294,6 +293,17 @@ body.no-mouse .title { cursor: default; }
   pointer-events: none;
 }
 .lines p { margin: 0; line-height: 1.15; color: var(--color-stroke); white-space: nowrap; }
+
+/* L'heure a change : on ne remplace pas, on corrige a la main. L'heure barree
+   reste noire comme le reste — la rature se lit de pres, pas de loin, et c'est
+   voulu. Le trait ne s'interrompt pas autour des jambages, sans quoi il aurait
+   l'air d'un defaut d'affichage. */
+.tagline s {
+  text-decoration-line: line-through;
+  text-decoration-thickness: 0.09em;
+  text-decoration-skip-ink: none;
+  margin-right: 0.14em;
+}
 
 /* Schengen C Ultra : graisse 1000 de la variable. */
 .tagline {
@@ -332,7 +342,6 @@ body.no-mouse .title { cursor: default; }
    qu'à recevoir le survol et le clic, et à exister pour les lecteurs d'écran.
    Sans JS, c'est la version statique ci-dessus qui reste affichée. */
 body.canvas-word .title {
-  background-image: none;
   -webkit-text-stroke-width: 0;
   text-stroke-width: 0;
   color: transparent;

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SUDV11</title>
   <meta name="description" content="Site SUDV11">
-  <link rel="stylesheet" href="css/style.css?v=9">
+  <link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body>
   <!-- Header : PLANNING à gauche, play + statut à droite -->
@@ -34,12 +34,13 @@
     <!-- Le titre est un portail : les lettres sont remplies par une vue du
          plan, et le clic projette le mot vers le lecteur avant d'y entrer -->
     <canvas class="word-canvas" id="wordCanvas" aria-hidden="true"></canvas>
-    <!-- Le plan n'est pas encore ouvert : le mot est un <span>, pas un lien.
-         Pour le rouvrir, en refaire une balise <a> pointant vers la page du
-         plan (voir le journal git), et publier cette page avec son atlas. -->
-    <span class="title" id="titlePortal" role="img" aria-label="SUDV11">SUDV11</span>
+    <!-- Le plan est ouvert : le mot est un lien. Le clic ne suit pas le lien
+         tout de suite — le script projette d'abord le mot vers le lecteur,
+         puis navigue. Sans JS, le lien marche quand meme, sans l'animation.
+         Sur un appareil sans souris, le plan se renvoie lui-meme a l'accueil. -->
+    <a class="title" id="titlePortal" href="pics.html">SUDV11</a>
     <div class="lines" id="lines">
-      <p class="tagline">ce soir 20h....</p>
+      <p class="tagline">ce soir <s>20h</s> 21h....</p>
       <p class="subline">sur ton ordinateur ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧</p>
     </div>
   </main>
@@ -244,7 +245,19 @@
   <!-- Le plan vit derrière la page : des bulles dérivent en permanence, et on
        ne les voit qu'à travers les lettres. Au survol le mot gonfle lentement ;
        au clic il fonce vers le lecteur et on entre. Tout est peint dans un seul
-       canvas — pas de masque CSS à tenir aligné, une seule source de vérité. -->
+       canvas — pas de masque CSS à tenir aligné, une seule source de vérité.
+
+       Trois précautions gardent le gonflement fluide, car c'est là que la
+       moindre dépense se voit :
+       — les pastilles rondes sont découpées une fois pour toutes, et seulement
+         pour les images réellement tirées : plus aucun clip par bulle et par
+         image, juste un drawImage ;
+       — le mot est cuit dans deux bitmaps (remplissage, contour) et redessiné
+         tel quel. Peindre le texte à une taille neuve à chaque image forçait
+         le navigateur à re-rasteriser les lettres 60 fois par seconde : c'était
+         l'origine des à-coups. On ne recuit qu'au-delà de 1,5 % de dérive ;
+       — le canvas ne couvre que la boîte du mot. Il ne passe plein écran que
+         pour l'entrée, où le mot doit traverser toute la page. -->
   <script>
     (function () {
       var cv = document.getElementById("wordCanvas");
@@ -258,9 +271,17 @@
       var HOVER = 1.09;      // gonflement maximal au survol
       var TAU = 0.55;        // secondes — lenteur du gonflement et du dégonflement
       var DERIVE = 11;       // px/s
+      var MARGE = 10;        // px autour du mot cuit (contour + antialiasing)
+      var DERIVE_MAX = 0.015; // on recuit le mot passé 1,5 % d'écart d'échelle
       var doux = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-      var W = 0, H = 0, DPR = 1, police = 0, boxW = 0, cx = 0, cy = 0;
+      var DPR = 1, vw = 0, vh = 0;     // fenêtre
+      var W = 0, H = 0;                // canvas, en px CSS
+      var pageCx = 0, pageCy = 0;      // centre du mot dans la page
+      var cx = 0, cy = 0;              // centre du mot dans le canvas
+      var plein = false;               // canvas plein écran (entrée / retour)
+      var police = 0, boxW = 0, boxH = 0;
+      var trait = "#000";              // couleur du contour, lue une fois
       var S = 1, cible = 1, phase = "repos", t0 = 0, depart = 1;
       var atlas = null, meta = null, prets = false;
 
@@ -268,51 +289,137 @@
       // grossissent avec lui. C'est ce qui donne la sensation d'entrer dedans
       // plutôt que de zoomer sur une image.
       var px = [], py = [], vx = [], vy = [], r = [], img = [], ph = [], w1 = [], w2 = [];
+      var rond = [], utiles = [];      // pastilles découpées ; img[i] pointe dans rond
+
+      var masque = document.createElement("canvas"), mctx = masque.getContext("2d");
+      var contour = document.createElement("canvas"), cctx = contour.getContext("2d");
+      var cuitS = 0, cuitW = 0, cuitH = 0;
+
+      function applique_police(g, taille) {
+        g.font = "700 " + taille + 'px "ABC Schengen C", system-ui, sans-serif';
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        if ("letterSpacing" in g) g.letterSpacing = (taille * 0.02) + "px";
+      }
 
       // La taille vient du CSS (.title, via clamp) : le canvas ne la recalcule
       // pas, il la lit. Ainsi le mot peint et la zone de survol ne peuvent
       // jamais diverger, et un seul reglage suffit pour les deux.
-      function police_css() {
-        return parseFloat(getComputedStyle(portal).fontSize) || 120;
-      }
-
       function mesure() {
         var cs = getComputedStyle(document.documentElement);
         var hh = parseFloat(cs.getPropertyValue("--header-h")) || 64;
         var th = parseFloat(cs.getPropertyValue("--ticker-h")) || 38;
+        trait = cs.getPropertyValue("--color-stroke").trim() || "#000";
+
         DPR = Math.min(2, window.devicePixelRatio || 1);
-        W = window.innerWidth; H = window.innerHeight;
-        cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-        police = police_css();
-        cx = W / 2;
-        cy = hh + th + (H - hh - th) / 2;
-        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-        applique_police();
-        boxW = ctx.measureText(MOT).width;
+        vw = window.innerWidth; vh = window.innerHeight;
+        police = parseFloat(getComputedStyle(portal).fontSize) || 120;
+        pageCx = vw / 2;
+        pageCy = hh + th + (vh - hh - th) / 2;
+
+        applique_police(ctx, police);
+        var m = ctx.measureText(MOT);
+        boxW = m.width;
+        var haut = m.actualBoundingBoxAscent || police * 0.72;
+        var bas = m.actualBoundingBoxDescent || police * 0.28;
+
+        // Le bitmap du mot est symétrique autour du centre : on l'agrandit
+        // ensuite depuis ce centre, comme le fait le mot lui-même.
+        cuitW = boxW * HOVER + MARGE * 2;
+        cuitH = (Math.max(haut, bas) * HOVER + MARGE) * 2;
+        masque.width = contour.width = Math.ceil(cuitW * DPR);
+        masque.height = contour.height = Math.ceil(cuitH * DPR);
+        cuitS = 0;                      // les bitmaps sont à refaire
+
+        cadre();
 
         // la ligne du dessous suit le mot peint, pas une valeur en dur
         var lignes = document.getElementById("lines");
-        if (lignes) lignes.style.top = Math.round(cy + police * 0.62) + "px";
+        if (lignes) lignes.style.top = Math.round(pageCy + police * 0.62) + "px";
       }
 
-      function applique_police() {
-        ctx.font = "700 " + police + 'px "ABC Schengen C", system-ui, sans-serif';
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        if ("letterSpacing" in ctx) ctx.letterSpacing = (police * 0.02) + "px";
+      // Le canvas ne couvre que ce qu'il peint. Au repos c'est la boîte du mot :
+      // effacer et masquer coûtent alors quelques centaines de milliers de
+      // pixels au lieu de l'écran entier.
+      function cadre() {
+        if (plein) {
+          cv.style.cssText = "";        // on rend la main à la feuille de style
+          W = vw; H = vh;
+          cx = pageCx; cy = pageCy;
+        } else {
+          W = cuitW; H = cuitH;
+          cv.style.left = (pageCx - W / 2) + "px";
+          cv.style.top = (pageCy - H / 2) + "px";
+          cv.style.right = "auto";
+          cv.style.bottom = "auto";
+          cv.style.width = W + "px";
+          cv.style.height = H + "px";
+          cx = W / 2; cy = H / 2;
+        }
+        cv.width = Math.round(W * DPR);
+        cv.height = Math.round(H * DPR);
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      }
+
+      function mode(pleinEcran) {
+        if (plein === pleinEcran) return;
+        plein = pleinEcran;
+        cuitS = 0;
+        cadre();
+      }
+
+      // Le mot cuit à l'échelle s : remplissage d'un côté (il sert de masque),
+      // contour de l'autre (son épaisseur ne doit pas suivre l'échelle).
+      function cuis_mot(s) {
+        cuitS = s;
+        applique_police(mctx, police * s);
+        mctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        mctx.clearRect(0, 0, cuitW, cuitH);
+        mctx.fillStyle = "#000";
+        mctx.fillText(MOT, cuitW / 2, cuitH / 2);
+
+        applique_police(cctx, police * s);
+        cctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        cctx.clearRect(0, 0, cuitW, cuitH);
+        cctx.lineWidth = 2;
+        cctx.strokeStyle = trait;
+        cctx.strokeText(MOT, cuitW / 2, cuitH / 2);
+      }
+
+      // Une pastille par image réellement tirée : le disque est découpé ici,
+      // une fois, plutôt qu'à chaque bulle et à chaque image.
+      function cuis_pastilles() {
+        var SP = Math.max(64, Math.min(192, Math.ceil(police * 0.36 * HOVER * DPR)));
+        var C = meta.cell;
+        rond = [];
+        for (var k = 0; k < utiles.length; k++) {
+          var im = meta.images[utiles[k]];
+          var c = document.createElement("canvas");
+          c.width = c.height = SP;
+          var g = c.getContext("2d");
+          g.beginPath();
+          g.arc(SP / 2, SP / 2, SP / 2, 0, 6.2832);
+          g.clip();
+          g.drawImage(atlas, im.x * C, im.y * C, C, C, 0, 0, SP, SP);
+          rond.push(c);
+        }
       }
 
       function semer() {
         var demiW = boxW * 0.58, demiH = police * 0.70;
+        var vus = {};
+        utiles = [];
         for (var i = 0; i < N; i++) {
           px[i] = (Math.random() * 2 - 1) * demiW;
           py[i] = (Math.random() * 2 - 1) * demiH;
           vx[i] = vy[i] = 0;
           r[i] = police * (0.22 + Math.random() * 0.14);
-          img[i] = meta.images[(Math.random() * meta.images.length) | 0];
+          var j = (Math.random() * meta.images.length) | 0;
+          if (!(j in vus)) { vus[j] = utiles.length; utiles.push(j); }
           ph[i] = Math.random() * 6.283;
           w1[i] = 0.06 + Math.random() * 0.14;
           w2[i] = 0.06 + Math.random() * 0.14;
+          img[i] = vus[j];
         }
       }
 
@@ -327,12 +434,16 @@
           if (py[i] < -demiH) { py[i] = -demiH; vy[i] = Math.abs(vy[i]); }
           if (py[i] > demiH) { py[i] = demiH; vy[i] = -Math.abs(vy[i]); }
         }
+        // 2 500 paires par image : on écarte d'abord au carré, la racine ne
+        // sert que pour les bulles qui se chevauchent vraiment
         for (var a = 0; a < N; a++) {
           for (var b = a + 1; b < N; b++) {
-            var dx = px[b] - px[a], dy = py[b] - py[a];
-            var d = Math.hypot(dx, dy) || 1, ov = r[a] + r[b] - d;
-            if (ov <= 0) continue;
-            var ux = dx / d * ov * 0.05, uy = dy / d * ov * 0.05;
+            var dx = px[b] - px[a], dy = py[b] - py[a], sr = r[a] + r[b];
+            if (dx > sr || dx < -sr || dy > sr || dy < -sr) continue;
+            var d2 = dx * dx + dy * dy;
+            if (d2 >= sr * sr || d2 === 0) continue;
+            var d = Math.sqrt(d2), f = (sr - d) * 0.05 / d;
+            var ux = dx * f, uy = dy * f;
             px[a] -= ux; py[a] -= uy; px[b] += ux; py[b] += uy;
           }
         }
@@ -343,33 +454,32 @@
         ctx.clearRect(0, 0, W, H);
         if (!prets) return;
 
-        var C = meta.cell;
         for (var i = 0; i < N; i++) {
           var R = r[i] * S, X = cx + px[i] * S, Y = cy + py[i] * S;
           if (X + R < 0 || X - R > W || Y + R < 0 || Y - R > H) continue;
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(X, Y, R, 0, 6.2832);
-          ctx.clip();
-          ctx.drawImage(atlas, img[i].x * C, img[i].y * C, C, C, X - R, Y - R, R * 2, R * 2);
-          ctx.restore();
+          ctx.drawImage(rond[img[i]], X - R, Y - R, R * 2, R * 2);
         }
 
         // on ne garde que ce qui traverse les lettres
-        applique_police();
-        ctx.save();
-        ctx.font = "700 " + (police * S) + 'px "ABC Schengen C", system-ui, sans-serif';
-        if ("letterSpacing" in ctx) ctx.letterSpacing = (police * S * 0.02) + "px";
-        ctx.globalCompositeOperation = "destination-in";
-        ctx.fillStyle = "#000";
-        ctx.fillText(MOT, cx, cy);
-        ctx.globalCompositeOperation = "source-over";
-        // le contour garde son épaisseur quelle que soit l'échelle
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = getComputedStyle(document.documentElement)
-                            .getPropertyValue("--color-stroke").trim() || "#000";
-        ctx.strokeText(MOT, cx, cy);
-        ctx.restore();
+        if (plein) {
+          // l'entrée déborde largement du bitmap cuit : on peint le mot vif
+          applique_police(ctx, police * S);
+          ctx.globalCompositeOperation = "destination-in";
+          ctx.fillStyle = "#000";
+          ctx.fillText(MOT, cx, cy);
+          ctx.globalCompositeOperation = "source-over";
+          // le contour garde son épaisseur quelle que soit l'échelle
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = trait;
+          ctx.strokeText(MOT, cx, cy);
+        } else {
+          var k = S / cuitS, w = cuitW * k, h = cuitH * k;
+          var dx = cx - w / 2, dy = cy - h / 2;
+          ctx.globalCompositeOperation = "destination-in";
+          ctx.drawImage(masque, dx, dy, w, h);
+          ctx.globalCompositeOperation = "source-over";
+          ctx.drawImage(contour, dx, dy, w, h);
+        }
       }
 
       var prec = 0;
@@ -383,8 +493,9 @@
         } else if (phase === "retour") {
           var q = Math.min(1, (now - t0) / 550);
           S = 1 + (7 - 1) * Math.pow(1 - q, 3);
-          if (q >= 1) phase = "repos";
+          if (q >= 1) { phase = "repos"; mode(false); }
         }
+        if (prets && !plein && (!cuitS || Math.abs(S / cuitS - 1) > DERIVE_MAX)) cuis_mot(S);
         pas(dt, now / 1000);
         dessine();
         requestAnimationFrame(boucle);
@@ -405,22 +516,31 @@
       // le plan demande une souris : sur mobile le mot n'ouvre rien
       var sansSouris = !window.matchMedia("(any-hover: hover)").matches
                     || !window.matchMedia("(any-pointer: fine)").matches;
-      if (sansSouris) document.body.classList.add("no-mouse");
+      // Sans souris, le mot n'est plus un lien du tout : on lui retire son
+      // href. Sinon un doigt l'ouvrirait, et le plan le renverrait aussitot
+      // ici — un aller-retour pour rien. Il reste lisible, il n'est plus une
+      // porte, et les lecteurs d'ecran ne l'annoncent plus comme telle.
+      if (sansSouris) {
+        document.body.classList.add("no-mouse");
+        portal.removeAttribute("href");
+      }
       if (!sansSouris && portal.tagName === "A" && portal.getAttribute("href"))
       portal.addEventListener("click", function (e) {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
         e.preventDefault();
         if (doux) { location.href = portal.href; return; }
         document.body.classList.add("entering");
+        mode(true);
         phase = "entre"; t0 = performance.now(); depart = S;
         setTimeout(function () { if (!parti) { parti = true; location.href = portal.href; } }, 820);
       });
 
       window.addEventListener("resize", function () {
-        var avantW = boxW, avantP = police;
+        var avantP = police;
         mesure();
         var k = police / (avantP || police);
         for (var i = 0; i < N; i++) { px[i] *= k; py[i] *= k; r[i] *= k; }
+        if (prets) cuis_pastilles();
       });
 
       mesure();
@@ -428,13 +548,13 @@
       im.onload = function () {
         atlas = im;
         fetch("assets/mini.json").then(function (r) { return r.json(); }).then(function (m) {
-          meta = m; semer(); prets = true;
+          meta = m; semer(); cuis_pastilles(); prets = true;
           document.body.classList.add("canvas-word");
           // on revient du plan : le mot se repose
           try {
             if (sessionStorage.getItem("sudv11.retour")) {
               sessionStorage.removeItem("sudv11.retour");
-              if (!doux) { phase = "retour"; t0 = performance.now(); }
+              if (!doux) { mode(true); phase = "retour"; t0 = performance.now(); }
             }
           } catch (err) {}
         });

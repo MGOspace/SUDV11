@@ -8,3 +8,6 @@
 # Logs / divers
 *.log
 node_modules/
+
+# Outils locaux
+.claude/
