@@ -279,6 +279,9 @@ body {
 
 .title:focus-visible { outline: 2px solid var(--color-stroke); outline-offset: 8px; }
 
+/* Sans souris, le mot n'ouvre rien : il ne doit pas se donner l'air cliquable */
+body.no-mouse .title { cursor: default; }
+
 /* Les deux lignes sous le titre. Le bloc est posé par le script, juste sous
    le mot réellement peint ; les lignes s'empilent ensuite toutes seules. */
 .lines {

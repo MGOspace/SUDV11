@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SUDV11</title>
   <meta name="description" content="Site SUDV11">
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
   <!-- Header : PLANNING à gauche, play + statut à droite -->
@@ -402,7 +402,11 @@
 
       /* ---- clic : on entre dans le texte, si le plan est ouvert ---- */
       var parti = false;
-      if (portal.tagName === "A" && portal.getAttribute("href"))
+      // le plan demande une souris : sur mobile le mot n'ouvre rien
+      var sansSouris = !window.matchMedia("(any-hover: hover)").matches
+                    || !window.matchMedia("(any-pointer: fine)").matches;
+      if (sansSouris) document.body.classList.add("no-mouse");
+      if (!sansSouris && portal.tagName === "A" && portal.getAttribute("href"))
       portal.addEventListener("click", function (e) {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
         e.preventDefault();
