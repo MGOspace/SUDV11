@@ -34,9 +34,9 @@
     <!-- Le titre est un portail : les lettres sont remplies par une vue du
          plan, et le clic projette le mot vers le lecteur avant d'y entrer -->
     <canvas class="word-canvas" id="wordCanvas" aria-hidden="true"></canvas>
-    <!-- Le plan n'est pas encore ouvert : le mot n'est plus un lien, il n'y a
-         donc aucune URL a deviner. Pour le rouvrir, remettre :
-         <a class="title" id="titlePortal" href="pics.html">SUDV11</a>          -->
+    <!-- Le plan n'est pas encore ouvert : le mot est un <span>, pas un lien.
+         Pour le rouvrir, en refaire une balise <a> pointant vers la page du
+         plan (voir le journal git), et publier cette page avec son atlas. -->
     <span class="title" id="titlePortal" role="img" aria-label="SUDV11">SUDV11</span>
     <div class="lines" id="lines">
       <p class="tagline">ce soir 20h....</p>
