@@ -317,8 +317,11 @@ const CFG = {
   LINK_REF:  3,      // plancher de n_max : le premier lien n'est pas d'emblée au max
 
   // Le coin des dernieres arrivees : elles se posent ensemble dans l'angle en
-  // bas a gauche, les autres partout ailleurs. Rien ne marque la frontiere
-  // sinon le vide entre les deux — c'est le groupement qui la dit.
+  // haut a gauche, les autres partout ailleurs. Rien ne marque la frontiere
+  // sinon le vide entre les deux — c'est le groupement qui la dit. Le bas a
+  // gauche est pris : le cadre des infos y est pose, et un quartier sous lui
+  // se lisait comme un tas coince derriere la boite. En haut a gauche il n'y
+  // a que la pastille de sortie, qui n'occupe rien.
   NUIT_R:    0.40,   // rayon du quart de disque, depuis le coin. Choisi pour
                      // que les nouvelles y tiennent a la densite du reste
   NUIT_MARGE:1.09,   // ce que les autres laissent en plus : la couture se voit
@@ -677,7 +680,7 @@ const hL = document.getElementById("hL");
   // taille au repos : t0 + Y·c — additif, un incrément constant par clic
   const restRadius = i => Math.min(base[i] + CFG.Y * clicks[i], CFG.R0 * CFG.RMAX);
 
-  // Les dernieres arrivees se posent ensemble dans l'angle en bas a gauche,
+  // Les dernieres arrivees se posent ensemble dans l'angle en haut a gauche,
   // les autres tiennent le reste du plan. Le rayon est calcule pour qu'elles y
   // soient a la meme densite qu'ailleurs : c'est un quartier, pas un tas.
   // Rien ne les y retient ensuite — la derive fera le melange qu'elle voudra.
@@ -686,14 +689,14 @@ const hL = document.getElementById("hL");
     // c'est la racine de sa surface, qui ne bouge pas avec la fenetre
     const ref = Math.sqrt(AIRE);
     const rN = ref * CFG.NUIT_R, rHors = rN * CFG.NUIT_MARGE;
-    const coin = (x, y) => Math.hypot(x, WH - y);      // distance a l'angle
+    const coin = (x, y) => Math.hypot(x, y);           // distance a l'angle
     for (let i = 0; i < N; i++){
       const r = restRadius(i);
       if (meta.images[i].nuit){
         // racine carree : un quart de disque uniforme, sans entassement au coin
         const a = Math.random() * 1.5708, u = Math.sqrt(Math.random()) * rN;
         px[i] = Math.cos(a) * u;
-        py[i] = WH - Math.sin(a) * u;
+        py[i] = Math.sin(a) * u;
       } else {
         let k = 0;
         do {
